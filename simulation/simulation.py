@@ -9,9 +9,21 @@ from abc import abstractmethod
 import MultiNEAT as NEAT
 
 
+## PERTINENT TODO -s listed here
+
+    #Add penalty for having bots collide with objects (excluding LOS)
+    #Wrap everything in objects, add parameters for bots to modify their "physics"
+    #
+
+
+##
+
+
+
+
 class Controller:
     @abstractmethod
-    def __call__(self, senses : np.array) -> np.array:
+    def __call__(self, senses):
         """Maps a set of inputs (numpy array) to a set of outputs (numpy array)"""
         pass
 
@@ -20,7 +32,7 @@ class Controller:
         pass
 
 class DumbController:
-    def __call__(self, senses : np.array) -> np.array:
+    def __call__(self, senses):
         #return np.array([random.choice((-1, 1)) for i in range(2)])
         return [0, 0]
 
@@ -36,7 +48,7 @@ params.OldAgeTreshold = 35
 params.MinSpecies = 5
 params.MaxSpecies = 10
 params.RouletteWheelSelection = False
-params.RecurrentProb = 0.1
+params.RecurrentProb = 0.15
 params.OverallMutationRate = 0.8
 
 params.MutateWeightsProb = 0.8
@@ -48,9 +60,9 @@ params.WeightMutationRate = 0.25
 
 params.MaxWeight = 8
 
-params.MutateAddNeuronProb = 0.1
+params.MutateAddNeuronProb = 0.05
 params.MutateAddLinkProb = 0.1
-params.MutateRemLinkProb = 0.0
+params.MutateRemLinkProb = 0.1
 
 params.MinActivationA  = 4.9
 params.MaxActivationA  = 4.9
@@ -63,6 +75,7 @@ params.ActivationFunction_SignedStep_Prob = 0.0
 params.CrossoverRate = 0.75  # mutate only 0.25
 params.MultipointCrossoverRate = 0.4
 params.SurvivalRate = 0.2
+
 class MultiNEATWrapper:
     """The NEATWrapper contains the means of initializing a NEAT
     network with a set of specific parameters, and the means of getting
@@ -93,10 +106,10 @@ class MultiNEATWrapper:
         print("GETTING GENOME DONE")
         return genome
             
-    def set_current_fitness(self, fit) -> None:
+    def set_current_fitness(self, fit):
         self.get_current_genome().SetFitness(fit)
 
-    def update(self) -> None:
+    def update(self):
         print("UPDATING POPULATION")
         self.population.Epoch()
         self.genomes = NEAT.GetGenomeList(self.population)
@@ -113,7 +126,7 @@ class MultiNEATController:
         self.max_steps = steps
         self.fitness = 0
         self.step = 0
-    def __call__(self, senses : np.array) -> np.array:
+    def __call__(self, senses):
         if self.step == 0:
             self.genome = self.wrapper.get_current_genome()
         self.step += 1
@@ -145,7 +158,7 @@ class MultiNEATController:
 
 
 class TankDriveBot:
-    def __init__(self, x, y, speed, rotate_rate, orientation : float, controller, los_range = 130):
+    def __init__(self, x, y, speed, rotate_rate, orientation, controller, los_range = 130):
         self.x = x
         self.y = y
         self.orientation = orientation
@@ -159,9 +172,9 @@ class TankDriveBot:
         self.los_range = los_range 
         self.los = None
 
-    def draw(self):
+    def draw(self, screen):
         #pygame.draw.ellipse(self.surface, black, self.surface.get_rect(), 2)
-        pygame.draw.circle(screen, blue, (floor(self.x), floor(self.y)), 7, 1)
+        pygame.draw.circle(screen, blue, (int(floor(self.x)), int(floor(self.y))), 7, 1)
         self.los = pygame.draw.line(screen, black, (self.x, self.y), (self.x + sin(self.orientation) * self.los_range, 
                 self.y + cos(self.orientation) * self.los_range))
         #screen.blit(self.surface, (self.x, self.y))
@@ -193,7 +206,7 @@ class TankDriveBot:
                     self.y = tmp_y
 
 
-    def rangefinder(self) -> float: 
+    def rangefinder(self): 
         """Raycasts based on orientation / position of the bot, returns the distance from the closest object.
         
         For the moment performs a VERY costly computation of iterating over a distance."""
@@ -210,29 +223,120 @@ class TankDriveBot:
         return distance
 
          
+red = [255,0,0]
+green = [0,255,0]
+blue = [0,0,255]
+white = [255,255,255]
+black = [0,0,0]
+UP = [0,-1]
+DOWN = [0,1]
+LEFT = [-1,0]
+RIGHT = [1,0]
+NOTMOVING = [0,0]
+
+class Environment:
+    def __init__(self, shape, controllers, bots, collidable, player = None):
+        
+        self.single_controller = (len(controllers) == 1) #should all bots operate on the same controller / GA?   
+        self.controllers = controllers
+        self.collidables = collidable
+        self.bots = bots
+        self.player = player
+        self.shape = shape
+
+        pygame.init()
+        self.screenBGColor = white
+        self.screen=pygame.display.set_mode(self.shape)
+        pygame.display.set_caption("SHIIIIIIIEEEEEEEEEEEEEEEEEEEEEEEEEET")
+        self.clock=pygame.time.Clock()
 
 
+        self.running = True
+        self.l_wheel = 0
+        self.r_wheel = 0
 
-
-if __name__ == '__main__':
+    def play(self):
+        while self.running:
+            for event in pygame.event.get():
+                if event.type==pygame.QUIT:
+                    running = False
+            keys = pygame.key.get_pressed()
+            if keys[K_w]:
+                self.l_wheel = 1
+            elif keys[K_s]:
+                self.l_wheel = -1
+            else:
+                self.l_wheel = 0
+            if keys[K_UP]:
+                self.r_wheel = 1
+            elif keys[K_DOWN]:
+                self.r_wheel = -1
+            else:
+                self.r_wheel = 0
+            self.tick()
+            self.render()
+        #main loop end
+        
+        pygame.quit()
     
+    def render(self):
+        self.screen.fill(self.screenBGColor)
+        self.clock.tick(400)
+        for bot in self.bots:
+            bot.draw(self.screen)
+        if self.player: self.player.draw(self.screen)
+        for c in self.collidables:
+            c.draw(self.screen)
+        pygame.display.flip()
 
-    red = [255,0,0]
-    green = [0,255,0]
-    blue = [0,0,255]
-    white = [255,255,255]
-    black = [0,0,0]
-    UP = [0,-1]
-    DOWN = [0,1]
-    LEFT = [-1,0]
-    RIGHT = [1,0]
-    NOTMOVING = [0,0]
+    def reset(self):
+        distance = 0
+        for i in range(len(self.bots)): #for now we just space them horizontally 
+            self.bots[i].setpos(100 * i + 50, 50 * i + 50)
+            distance += sqrt((self.bots[i].x - player.x) ** 2 + (self.bots[i].y - player.y) ** 2)
+        self.bots[i].controller._feedback(distance)
+        if self.player:
+            self.player.setpos(600 + 200 * random.random(), 100 + 300 * random.random())
+
+    def tick(self):                                           #----------------HERE
+        #for c in collidables:
+        #    for d in collidables:
+        #        if c != d:
+        #            if d.rect.colliderect(c.rect):
+        #                print("PHYSICAL COLLISION")
+        for bot in self.bots:
+            if bot.controller:
+                ## MULTINEAT DISTANCE METRIC
+                #if bot.rangefinder() != float('inf'):
+                #    print(bot.rangefinder())
+                if bot.controller.step == 0:
+                    self.reset()
+                distance = (bot.x - self.player.x) ** 2 + (bot.y - self.player.y) ** 2
+                distance = sqrt(distance)
+                ##
+                print("BOT INPUT: ", [distance, bot.rangefinder()])
+                instructions = bot.controller([distance, bot.rangefinder()]) #TODO: Add sensory inputs here
+                bot.move(instructions[0], instructions[1])
+        self.player.move(self.l_wheel, self.r_wheel)
+        print("----------------------------------------------------") 
+    
+if __name__ == '__main__':
+    SCREENSIZE = [800, 600]
+
 
     g = NEAT.Genome(0, 2, 0, 2, False, NEAT.ActivationFunction.UNSIGNED_SIGMOID, NEAT.ActivationFunction.UNSIGNED_SIGMOID, 0, params)
     pop = NEAT.Population(g, params, True, 1.0, 0)
     NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
-    #constants end
-    #classes
+
+    player = TankDriveBot(SCREENSIZE[0]/2,SCREENSIZE[1]/2,3,0.2, 0, None)
+    bots = []
+    NUM_BOTS = 2
+    controller = MultiNEATController(NEAT_WRAPPER, 3000)
+    for i in range(NUM_BOTS): #for now we just space them horizontally 
+        #controller = DumbController()
+        bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
+    collidables = []
+
     class collidable:
         x = 0
         y = 0
@@ -247,145 +351,14 @@ if __name__ == '__main__':
             self.h = h
             self.color = color
             self.rect = pygame.Rect(x,y,w,h)
-        def draw(self):
+        def draw(self, screen):
             pygame.draw.rect(screen,self.color,[self.x,self.y,self.w,self.h],6)
-
-    pygame.init()
-    screenSize = [800,600]
-    screenBGColor = white
-    screen=pygame.display.set_mode(screenSize)
-    pygame.display.set_caption("SHIIIIIIIEEEEEEEEEEEEEEEEEEEEEEEEEET")
-    player = TankDriveBot(screenSize[0]/2,screenSize[1]/2,3,0.2, 0, None)
-    ##Initialize bots - CURRENTLY WITH DUMB CONTROLLERs
-    bots = []
-    NUM_BOTS = 2
-    controller = MultiNEATController(NEAT_WRAPPER, 3000)
-    for i in range(NUM_BOTS): #for now we just space them horizontally 
-        #controller = DumbController()
-        bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
-    ##
-    collidables = []
-    clock=pygame.time.Clock()
-    
-
-    ##INITIALIZE OBSTACLES
-
-    #INITIALIZE WALLS
     collidables.append(collidable(0, 0, 800, 3, blue))
     collidables.append(collidable(0, 0, 3, 600, blue))
     collidables.append(collidable(800, 0, 3, 600, blue))
     collidables.append(collidable(0, 600, 800, 3, blue))
-    
-
     collidables.extend(bots)
     collidables.append(player)
-    #INITIALIZE ACTUAL OBSTACLE
-
-
-    #INITIALIZE WALLS
-    ##
-
-    running = True
-    #globals end
-    player_moving = NOTMOVING
-
-    l_wheel = 0
-    r_wheel = 0
-    #functions
-    def render():
-        screen.fill(screenBGColor)
-        clock.tick(400)
-        for bot in bots:
-            bot.draw()
-        player.draw()
-        for c in collidables:
-            c.draw()
-        pygame.display.flip()
-
-    def reset():
-        distance = 0
-        for i in range(NUM_BOTS): #for now we just space them horizontally 
-            bots[i].setpos(100 * i + 50, 50 * i + 50)
-            distance += sqrt((bots[i].x - player.x) ** 2 + (bots[i].y - player.y) ** 2)
-        bots[i].controller._feedback(distance)
-        player.setpos(600 + 200 * random.random(), 100 + 300 * random.random())
-
-    def tick():                                           #----------------HERE
-        #for c in collidables:
-        #    for d in collidables:
-        #        if c != d:
-        #            if d.rect.colliderect(c.rect):
-        #                print("PHYSICAL COLLISION")
-        for bot in bots:
-            if bot.controller:
-                ## MULTINEAT DISTANCE METRIC
-                #if bot.rangefinder() != float('inf'):
-                #    print(bot.rangefinder())
-                if bot.controller.step == 0:
-                    reset()
-                distance = (bot.x - player.x) ** 2 + (bot.y - player.y) ** 2
-                distance = sqrt(distance)
-                ##
-                print("BOT INPUT: ", [distance, bot.rangefinder()])
-                instructions = bot.controller([distance, bot.rangefinder()]) #TODO: Add sensory inputs here
-                bot.move(instructions[0], instructions[1])
-        player.move(l_wheel, r_wheel)
-        print("----------------------------------------------------") 
-    #functions end
+    env = Environment(SCREENSIZE, [MultiNEATController(NEAT_WRAPPER, 3000)], bots, collidables, player = player)
+    env.play()    
     
-    #main loop
-    while running==True:
-        for event in pygame.event.get():
-            if event.type==pygame.QUIT:
-                running = False
-        keys = pygame.key.get_pressed()
-        if keys[K_w]:
-            l_wheel = 1
-        elif keys[K_s]:
-            l_wheel = -1
-        else:
-            l_wheel = 0
-        if keys[K_UP]:
-            r_wheel = 1
-        elif keys[K_DOWN]:
-            r_wheel = -1
-        else:
-            r_wheel = 0
-        tick()
-        render()
-    #main loop end
-    
-    pygame.quit()
-    
-
-
-
-
-#class player:
-#    x = 0
-#    y = 0
-#    speed = 0
-#    rect = pygame.Rect(x,y,20,20)
-#    def __init__(self,x,y,speed):
-#        self.x = x
-#        self.y = y
-#        self.speed = speed
-#        self.rect = pygame.Rect(self.x,self.y,20,20)
-#    def draw(self):
-#        if player_moving==LEFT:
-#                pygame.draw.polygon(screen,black,[(self.x-10,self.y),(self.x+10,self.y-10),(self.x+10,self.y+10)])
-#        elif player_moving==RIGHT:
-#            pygame.draw.polygon(screen,black,[(self.x+10,self.y),(self.x-10,self.y-10),(self.x-10,self.y+10)])
-#        elif player_moving==UP:
-#            pygame.draw.polygon(screen,black,[(self.x,self.y-10),(self.x+10,self.y+10),(self.x-10,self.y+10)])
-#        elif player_moving==DOWN:
-#            pygame.draw.polygon(screen,black,[(self.x,self.y+10),(self.x+10,self.y-10),(self.x-10,self.y-10)])
-#        else:
-#            pygame.draw.rect(screen,black,pygame.Rect(self.x-10,self.y-10,20,20),6)
-#    def setpos(self,x,y):
-#        self.x = x
-#        self.y = y
-#    def move(self,direction):
-#        self.x = self.x + direction[0]*self.speed
-#        self.y = self.y + direction[1]*self.speed
-#        self.rect = pygame.Rect(self.x,self.y,20,20)
