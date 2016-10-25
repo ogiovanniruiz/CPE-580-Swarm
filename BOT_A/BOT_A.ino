@@ -27,12 +27,25 @@ char r_val;
 
   int linear;
   int angular;
+
+#include <SoftwareSerial.h>
+SoftwareSerial BTserial(2, 3); // RX | TX
+// Connect the HC-05 TX to Arduino pin 2 RX. 
+// Connect the HC-05 RX to Arduino pin 3 TX through a voltage divider.
+
+char c = ' ';
+
+  
 //===================================================
 
 void setup()
 {
   Serial.begin (9600);
   pinMode(LED_BUILTIN, OUTPUT);
+
+  // start communication with the HC-05 using 38400
+  BTserial.begin(9600);  
+  Serial.println("BTserial started at 38400");
   
   // set all the motor control pins to outputs
   pinMode(enA, OUTPUT);
@@ -68,7 +81,7 @@ distance= duration*0.034/2;
 
 //========================================
 
-void blue_tooth()
+void blue_tooth_receive()
 {
   int buf_size = Serial.available();
 
@@ -92,6 +105,18 @@ void blue_tooth()
 
   delay(30);
 }
+
+//======================================
+
+
+void blue_tooth_send()
+{
+  char val[] = {'H','C','C'};
+  BTserial.write(val);
+}
+
+
+
 
 
 //=======================================
@@ -133,8 +158,8 @@ void motor_control()
   }
 //=====================================
 
-int cmd_left = linear + 2*angular;
-int cmd_right = linear - 2*angular;
+int cmd_left = linear - 2*angular;
+int cmd_right = linear + 2*angular;
 
   if (cmd_left > 0)
   {
@@ -192,7 +217,8 @@ int cmd_right = linear - 2*angular;
 void loop()
 {
 
-  blue_tooth();
+  blue_tooth_receive();
+  blue_tooth_send();
   motor_control();
 
 } 
