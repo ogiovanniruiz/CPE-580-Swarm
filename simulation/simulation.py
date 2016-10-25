@@ -13,8 +13,9 @@ import MultiNEAT as NEAT
 
     #Add penalty for having bots collide with objects (excluding LOS)
     #Wrap everything in objects, add parameters for bots to modify their "physics"
-    #
-
+    #FIX LOS RANGEFINDER SO ITS MORE ACCURATE
+    #Add more realistic physics for bots
+    #Randomize bot positions (within reason), so they can't "game" the system by moving right blindly
 
 ##
 
@@ -51,14 +52,14 @@ params.RouletteWheelSelection = False
 params.RecurrentProb = 0.15
 params.OverallMutationRate = 0.8
 
-params.MutateWeightsProb = 0.8
+params.MutateWeightsProb = 0.25
 
 params.WeightMutationMaxPower = 2.5
 params.WeightReplacementMaxPower = 5.0
 params.MutateWeightsSevereProb = 0.5
 params.WeightMutationRate = 0.25
 
-params.MaxWeight = 8
+params.MaxWeight = 9
 
 params.MutateAddNeuronProb = 0.05
 params.MutateAddLinkProb = 0.1
@@ -96,25 +97,21 @@ class MultiNEATWrapper:
         return self.population.GetBestGenome()
 
     def get_current_genome(self, progress = True):
-        print("GETTING CURRENT GENOME")
         if self.genomes is None:
             self.genomes = NEAT.GetGenomeList(self.population)
         if self.current >= len(self.genomes):
             self.update()
         genome = self.genomes[self.current]
         if progress: self.current += 1
-        print("GETTING GENOME DONE")
         return genome
             
     def set_current_fitness(self, fit):
         self.get_current_genome().SetFitness(fit)
 
     def update(self):
-        print("UPDATING POPULATION")
         self.population.Epoch()
         self.genomes = NEAT.GetGenomeList(self.population)
         self.current = 0
-        print("UPDATING DONE")
 
     def copy(self): #returns a NEW OBJECT identical to current one
         Ellipsis
@@ -165,15 +162,21 @@ class TankDriveBot:
         self.speed = speed
         self.rotate_rate = rotate_rate
         self.controller = controller
-        self.rect = pygame.Rect(self.x,self.y,14,14)
+        self.rect = pygame.Rect(self.x,self.y,16,16)
         #self.surface = pygame.Surface((20, 25))
         #self.surface.fill(white)
         #self.surface.set_colorkey(blue)
         self.los_range = los_range 
         self.los = None
+        
+        self.stationary_time = 0
 
     def draw(self, screen):
         #pygame.draw.ellipse(self.surface, black, self.surface.get_rect(), 2)
+        if True: #to render rangefinder distance
+            font = pygame.font.Font(None, 16)
+            surface = font.render(str(self.rangefinder()), 0, blue)
+            screen.blit(surface, (self.x, self.y))
         pygame.draw.circle(screen, blue, (int(floor(self.x)), int(floor(self.y))), 7, 1)
         self.los = pygame.draw.line(screen, black, (self.x, self.y), (self.x + sin(self.orientation) * self.los_range, 
                 self.y + cos(self.orientation) * self.los_range))
@@ -184,26 +187,38 @@ class TankDriveBot:
         self.y = y
 
     def move(self,l_wheel,r_wheel):
-        tmp_x = 0
-        tmp_y = 0
-        tmp_x += self.x
-        tmp_y += self.y
-        if l_wheel == r_wheel and r_wheel != 0:
-            sign = l_wheel / abs(l_wheel)
-            self.x += sign * sin(self.orientation) * self.speed
-            self.y += sign * cos(self.orientation) * self.speed
+        stationary_flag = False
+        collision_flag = False
+        if self.rangefinder() > 3: #try and avoid enabling collisions
+            tmp_x = 0
+            tmp_y = 0
+            tmp_x += self.x
+            tmp_y += self.y
+            if l_wheel == r_wheel and r_wheel != 0:
+                sign = l_wheel / abs(l_wheel)
+                self.x += sign * sin(self.orientation) * self.speed
+                self.y += sign * cos(self.orientation) * self.speed
 
-        elif l_wheel == 1 and r_wheel == -1: #pivot in-place towards the right
-            self.orientation += self.rotate_rate    
-        elif l_wheel == -1 and r_wheel == 1: #pivot in-place towards the left
-            self.orientation -= self.rotate_rate    
-        self.orientation %= (2 * pi) 
-        self.rect = pygame.Rect(self.x,self.y,16,16)
-        for c in collidables:
-            if c != self:
-                if self.rect.colliderect(c.rect):
-                    self.x = tmp_x
-                    self.y = tmp_y
+            elif l_wheel == 1 and r_wheel == -1: #pivot in-place towards the right
+                self.orientation += self.rotate_rate    
+            elif l_wheel == -1 and r_wheel == 1: #pivot in-place towards the left
+                self.orientation -= self.rotate_rate    
+            self.orientation %= (2 * pi) 
+            if tmp_x == self.x and tmp_y == self.y:
+                self.stationary_time += 1
+            else:
+                self.stationary_time = 0
+            for c in collidables:
+                if c != self and c != self.los:
+                    if self.rect.colliderect(c.rect):
+                        self.x = tmp_x
+                        self.y = tmp_y
+                        collision_flag = True
+            self.rect = pygame.Rect(self.x,self.y,16,16)
+            if self.stationary_time >= STATIONARY_THRESHOLD:
+                stationary_flag = True
+        return (collision_flag, stationary_flag)
+            
 
 
     def rangefinder(self): 
@@ -235,8 +250,8 @@ RIGHT = [1,0]
 NOTMOVING = [0,0]
 
 class Environment:
-    def __init__(self, shape, controllers, bots, collidable, player = None):
-        
+    def __init__(self, shape, speed, controllers, bots, collidable, player = None):
+        self.speed = speed 
         self.single_controller = (len(controllers) == 1) #should all bots operate on the same controller / GA?   
         self.controllers = controllers
         self.collidables = collidable
@@ -254,6 +269,13 @@ class Environment:
         self.running = True
         self.l_wheel = 0
         self.r_wheel = 0
+
+
+        self.feedback = 0 #the feedback whatever controller in the simulation will be operating on
+
+
+        ##Extraneous functionality
+        pygame.font.init()
 
     def play(self):
         while self.running:
@@ -281,7 +303,7 @@ class Environment:
     
     def render(self):
         self.screen.fill(self.screenBGColor)
-        self.clock.tick(400)
+        self.clock.tick(self.speed)
         for bot in self.bots:
             bot.draw(self.screen)
         if self.player: self.player.draw(self.screen)
@@ -291,10 +313,13 @@ class Environment:
 
     def reset(self):
         distance = 0
+        #self.feedback = 0 #IGNORE PENALTIES IF THIS IS SET
         for i in range(len(self.bots)): #for now we just space them horizontally 
             self.bots[i].setpos(100 * i + 50, 50 * i + 50)
-            distance += sqrt((self.bots[i].x - player.x) ** 2 + (self.bots[i].y - player.y) ** 2)
-        self.bots[i].controller._feedback(distance)
+            self.feedback += sqrt((self.bots[i].x - player.x) ** 2 + (self.bots[i].y - player.y) ** 2)
+        print("GENERATION FEEDBACK: ", self.feedback)    
+        self.bots[i].controller._feedback(self.feedback)
+        self.feedback = 0 #reset feedback at the end of the epoch
         if self.player:
             self.player.setpos(600 + 200 * random.random(), 100 + 300 * random.random())
 
@@ -304,6 +329,7 @@ class Environment:
         #        if c != d:
         #            if d.rect.colliderect(c.rect):
         #                print("PHYSICAL COLLISION")
+        collisions = 0
         for bot in self.bots:
             if bot.controller:
                 ## MULTINEAT DISTANCE METRIC
@@ -311,27 +337,35 @@ class Environment:
                 #    print(bot.rangefinder())
                 if bot.controller.step == 0:
                     self.reset()
-                distance = (bot.x - self.player.x) ** 2 + (bot.y - self.player.y) ** 2
-                distance = sqrt(distance)
-                ##
-                print("BOT INPUT: ", [distance, bot.rangefinder()])
-                instructions = bot.controller([distance, bot.rangefinder()]) #TODO: Add sensory inputs here
-                bot.move(instructions[0], instructions[1])
-        self.player.move(self.l_wheel, self.r_wheel)
-        print("----------------------------------------------------") 
+                instructions = bot.controller([bot.rangefinder()]) #TODO: Add sensory inputs here
+                res = bot.move(instructions[0], instructions[1])
+                if res is not None:
+                    if res[0]: #collision flag
+                        self.feedback += COLLISION_PENALTY
+                    if res[1]: #stagnant_flag
+                        self.feedback += STATIONARY_PENALTY 
+        res = self.player.move(self.l_wheel, self.r_wheel)
+        if res[0]: #collision flag
+            self.feedback += COLLISION_PENALTY
+        if res[1]: #stagnant_flag
+            self.feedback += STATIONARY_PENALTY 
     
 if __name__ == '__main__':
     SCREENSIZE = [800, 600]
+    COLLISION_PENALTY = 0.1 #penalize collisions, straight-up
+    STATIONARY_PENALTY = 0.35 #penalize non-moving bots
+    STATIONARY_THRESHOLD = 20 #time-threshold for immobile bots
+    DURATION = 5000 
+    SPEED = 700
 
-
-    g = NEAT.Genome(0, 2, 0, 2, False, NEAT.ActivationFunction.UNSIGNED_SIGMOID, NEAT.ActivationFunction.UNSIGNED_SIGMOID, 0, params)
+    g = NEAT.Genome(0, 1, 0, 2, False, NEAT.ActivationFunction.UNSIGNED_SIGMOID, NEAT.ActivationFunction.UNSIGNED_SIGMOID, 0, params)
     pop = NEAT.Population(g, params, True, 1.0, 0)
     NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
 
     player = TankDriveBot(SCREENSIZE[0]/2,SCREENSIZE[1]/2,3,0.2, 0, None)
     bots = []
-    NUM_BOTS = 2
-    controller = MultiNEATController(NEAT_WRAPPER, 3000)
+    NUM_BOTS = 5
+    controller = MultiNEATController(NEAT_WRAPPER, DURATION)
     for i in range(NUM_BOTS): #for now we just space them horizontally 
         #controller = DumbController()
         bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
@@ -353,12 +387,13 @@ if __name__ == '__main__':
             self.rect = pygame.Rect(x,y,w,h)
         def draw(self, screen):
             pygame.draw.rect(screen,self.color,[self.x,self.y,self.w,self.h],6)
+
     collidables.append(collidable(0, 0, 800, 3, blue))
     collidables.append(collidable(0, 0, 3, 600, blue))
-    collidables.append(collidable(800, 0, 3, 600, blue))
-    collidables.append(collidable(0, 600, 800, 3, blue))
+    collidables.append(collidable(799, 0, 3, 600, blue))
+    collidables.append(collidable(0, 599, 800, 3, blue))
     collidables.extend(bots)
     collidables.append(player)
-    env = Environment(SCREENSIZE, [MultiNEATController(NEAT_WRAPPER, 3000)], bots, collidables, player = player)
+    env = Environment(SCREENSIZE, SPEED, [MultiNEATController(NEAT_WRAPPER, 3000)], bots, collidables, player = player)
     env.play()    
     
