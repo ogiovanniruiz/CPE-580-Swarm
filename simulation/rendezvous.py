@@ -14,15 +14,19 @@ black = [0, 0, 0]
 if __name__ == '__main__':
 	N = 20# Number of Robots
 	D = 2  # Dimension of search space
-	c = 0.001  # iteration rate
+	c = 0.0005 # iteration rate
 	P = 800 * np.random.rand(D, N) # Initial positions of robots in a 10x10 unit space
 	Pn = np.zeros((D,N), dtype=np.int)# Position bucket I THINK...
 
+	P0 = 800 * np.random.rand(D,1)
+	P0n = np.zeros((D,1), dtype=np.int)
+	Y = [500,500]
+
 	error = float("inf") # Initial error is HUGE. We want to minimize this.
-	goal = 100# The final error should be really small
+	goal = 0.001# The final error should be really small
 	steps = 0 # TIME STEPS cuz computer reasons.
 
-	SCREENSIZE = [800, 600] # Size of our output display
+	SCREENSIZE = [800, 800] # Size of our output display
 	screenBGColor = black # White background
 	running = True
 
@@ -36,26 +40,34 @@ if __name__ == '__main__':
 
 			while error > goal:
 				Pn = P
+				P0n = P0
 				steps += 1
+
+				P0n = P0n - c* (P0 -Y)
+				pygame.draw.circle(screen, black, [int(P0[0, 0]), int(P0[1, 0])], 7, 1)
 
 				for i in range(N):
 					for j in range(N):
-						circle = pygame.draw.circle(screen, black, [int(P[0, i]), int(P[1, i])], 7, 1)
+						pygame.draw.circle(screen, black, [int(P[0, i]), int(P[1, i])], 7, 1)
+						#pygame.draw.circle(screen, black, [int(P0[0, i]), int(P0[1, i])], 7, 1)
 
-						Pn[:, i] = Pn[:, i] + c * (P[:, j]-P[:, i])
+						Pn[:, i] = Pn[:, i] + c * (P[:, j]-P[:, i])  - c * (P[:,j] - P0[:,0])
 
-						circle = pygame.draw.circle(screen, green, [int(P[0,i]),int(P[1,i])] ,7, 1)
+						pygame.draw.circle(screen, green, [int(P[0,i]),int(P[1,i])] ,7, 1)
+						#pygame.draw.circle(screen, red, [int(P0[0, 0]), int(P0[1, 0])], 7, 1)
 
 
 				P = Pn
-				n_error = np.linalg.norm(scipy.spatial.distance.cdist(Pn,P))
+				P0 = P0n
+				pygame.draw.circle(screen, red, [int(P0[0, 0]), int(P0[1, 0])], 7, 1)
+				n_error = np.linalg.norm(P0n -Y)
 
 				error = n_error
 				print ('ERROR: ', error)
 				pygame.display.update()
 
 
-			print ("Consensus Reached")
+			print ("Consensus Reached in ", steps, "steps")
 			input("Ctrl+C to exit")
 
 	except KeyboardInterrupt:
