@@ -33,9 +33,6 @@ class TankDriveBot:
         self.rotate_rate = rotate_rate
         self.controller = controller
         self.rect = pygame.Rect(self.x,self.y,16,16)
-        #self.surface = pygame.Surface((20, 25))
-        #self.surface.fill(white)
-        #self.surface.set_colorkey(blue)
         self.los_range = los_range 
         self.los = None
         
@@ -271,19 +268,9 @@ class Environment:
             self.player.orientation = random.random() * 2 * pi
 
     def tick(self):                                           #----------------HERE
-        #for c in collidables:
-        #    for d in collidables:
-        #        if c != d:
-        #            if d.rect.colliderect(c.rect):
-        #                print("PHYSICAL COLLISION")
         collisions = 0
         for bot in self.bots:
             if bot.controller:
-                ## MULTINEAT DISTANCE METRIC
-                #if bot.rangefinder() != float('inf'):
-                #    print(bot.rangefinder())
-                #if bot.controller.step == 0:
-                    #self.reset()
                 instructions = bot.controller([bot.rangefinder(), 1.0]) #TODO: Add sensory inputs here
                 res = bot.move(instructions[0], instructions[1])
                 if res is not None:
