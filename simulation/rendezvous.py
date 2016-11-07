@@ -46,15 +46,11 @@ if __name__ == '__main__':
 						x = int(P[0, i])
 						y = int(P[1, i])
 
-
-
 						Pn[:, i] = Pn[:, i] + c * (P[:, j]-P[:, i])
-
-
 
 						pygame.display.update()
 
-
+				screen.fill(screenBGColor)
 				P = Pn
 				n_error = np.linalg.norm(scipy.spatial.distance.cdist(Pn,Pn))
 
