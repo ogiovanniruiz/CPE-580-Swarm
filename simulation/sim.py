@@ -7,8 +7,8 @@ from math import sin, cos, pi, floor, sqrt
 from abc import abstractmethod
 
 
-from keras.models import Sequential
-from keras.layers import Dense, Activation
+#from keras.models import Sequential
+#from keras.layers import Dense, Activation
 
 
 
@@ -32,12 +32,12 @@ class DumbController:
 
 
 class KerasWrapper:
-
+    pass
 
 
 
 class KerasController: 
-    
+    pass 
 
 
 
@@ -188,6 +188,18 @@ def generate_positions_by_minimum_distance(shape, num_bots, min_distance):
         #print "Remaining points: %s %s" % (len(x_points), len(y_points))
         return zip(x_pos, y_pos)
 
+def initialize_collidable_obstacles(ENV_SHAPE, num, mean_width, w_var, mean_height, h_var, min_space = 100):
+    collidables = []
+    pos = generate_positions_by_minimum_distance(ENV_SHAPE, num, min_space)
+    for x, y in pos:
+        height = mean_height + h_var * random.random() * random.choice((1, -1))
+        width = mean_width + w_var * random.random() * random.choice((1, -1))
+        collidables.append(collidable(x, y, height, width, blue))
+    return collidables
+
+
+
+
 
 
 class Environment:
@@ -313,7 +325,7 @@ class Environment:
 
 
 if __name__ == '__main__':
-    SCREENSIZE = [800, 600]
+    SCREENSIZE = [1400, 750]
     COLLISION_PENALTY = 0.1 #penalize collisions, straight-up
     STATIONARY_PENALTY = 1 #penalize non-moving bots
     STATIONARY_THRESHOLD = 20 #time-threshold for immobile bots
@@ -326,11 +338,11 @@ if __name__ == '__main__':
     DURATION = 6000 
     SPEED = 1000
 
-    MINIMUM_BOT_DISTANCE = 300 #used for initializing the bots with random-but-spaced points
+    MINIMUM_BOT_DISTANCE = 200 #used for initializing the bots with random-but-spaced points
 
     player = None
     bots = []
-    NUM_BOTS = 5
+    NUM_BOTS = 7
     controller = DumbController()
 
     for i in range(NUM_BOTS): #for now we just space them horizontally 
@@ -355,11 +367,18 @@ if __name__ == '__main__':
             self.rect = pygame.Rect(x,y,w,h)
         def draw(self, screen):
             pygame.draw.rect(screen,self.color,[self.x,self.y,self.w,self.h],6)
-
-    collidables.append(collidable(0, 0, 800, 3, blue))
-    collidables.append(collidable(0, 0, 3, 600, blue))
-    collidables.append(collidable(799, 0, 3, 600, blue))
-    collidables.append(collidable(0, 599, 800, 3, blue))
+    #initialize outer walls
+    collidables.append(collidable(0, 0, SCREENSIZE[0], 3, blue))
+    collidables.append(collidable(0, 0, 3, SCREENSIZE[1], blue))
+    collidables.append(collidable(SCREENSIZE[0] - 1, 0, 3, SCREENSIZE[1], blue))
+    collidables.append(collidable(0, SCREENSIZE[1] - 1, SCREENSIZE[0], 3, blue))
+    #initialize inner walls, if necessary
+    #def initialize_collidable_obstacle(ENV_SHAPE, num, mean_width, w_var, mean_height, h_var, min_space = 100):
+    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 58, 110, 40, 30, 10, 70)
+    collidables.extend(collidable_initializer) 
+    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 58, 30, 10, 110, 40, 70)
+    collidables.extend(collidable_initializer) 
+    #
     collidables.extend(bots)
     if player: collidables.append(player)
     env = Environment(SCREENSIZE, SPEED, controller, bots, collidables, player = player)
