@@ -7,6 +7,12 @@ from math import sin, cos, pi, floor, sqrt
 from abc import abstractmethod
 
 
+from keras.models import Sequential
+from keras.layers import Dense, Activation
+
+
+
+
 class Controller:
     @abstractmethod
     def __call__(self, senses):
@@ -21,6 +27,21 @@ class DumbController:
     def __call__(self, senses):
         return np.array([random.choice((-1, 1)) for i in range(2)])
         return [0, 0]
+
+
+
+
+class KerasWrapper:
+
+
+
+
+class KerasController: 
+    
+
+
+
+
 
 
 
