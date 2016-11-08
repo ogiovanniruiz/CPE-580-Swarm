@@ -54,9 +54,6 @@ class TankDriveBot:
         self.rotate_rate = rotate_rate
         self.controller = controller
         self.rect = pygame.Rect(self.x,self.y,16,16)
-        #self.surface = pygame.Surface((20, 25))
-        #self.surface.fill(white)
-        #self.surface.set_colorkey(blue)
         self.los_range = los_range 
         self.los = None
         
@@ -292,19 +289,9 @@ class Environment:
             self.player.orientation = random.random() * 2 * pi
 
     def tick(self):                                           #----------------HERE
-        #for c in collidables:
-        #    for d in collidables:
-        #        if c != d:
-        #            if d.rect.colliderect(c.rect):
-        #                print("PHYSICAL COLLISION")
         collisions = 0
         for bot in self.bots:
             if bot.controller:
-                ## MULTINEAT DISTANCE METRIC
-                #if bot.rangefinder() != float('inf'):
-                #    print(bot.rangefinder())
-                #if bot.controller.step == 0:
-                    #self.reset()
                 instructions = bot.controller([bot.rangefinder(), 1.0]) #TODO: Add sensory inputs here
                 res = bot.move(instructions[0], instructions[1])
                 if res is not None:
@@ -341,14 +328,11 @@ if __name__ == '__main__':
 
     MINIMUM_BOT_DISTANCE = 300 #used for initializing the bots with random-but-spaced points
 
-
-    #player = TankDriveBot(SCREENSIZE[0]/2,SCREENSIZE[1]/2,2,0.05, 0, None)
     player = None
     bots = []
     NUM_BOTS = 5
     controller = DumbController()
-    #controller = MultiNEATController(NEAT_WRAPPER, DURATION)
-    #controllers = [MultiNEATController(NEAT_WRAPPER, DURATION) for i in range(NUM_BOTS)]
+
     for i in range(NUM_BOTS): #for now we just space them horizontally 
 
         #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
@@ -379,5 +363,8 @@ if __name__ == '__main__':
     collidables.extend(bots)
     if player: collidables.append(player)
     env = Environment(SCREENSIZE, SPEED, controller, bots, collidables, player = player)
-    env.play()    
+    env.play() 
+
+
+
     
