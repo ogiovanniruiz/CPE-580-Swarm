@@ -29,8 +29,6 @@ class DumbController:
         return [0, 0]
 
 
-
-
 class KerasWrapper:
     pass
 
@@ -81,15 +79,20 @@ class TankDriveBot:
         collision_flag = False
         rotate_flag = False
         invalid_reverse_flag = False
-        tmp_x = 0
-        tmp_y = 0
-        tmp_x += self.x
-        tmp_y += self.y
 
         if l_wheel == r_wheel and r_wheel != 0:
             sign = l_wheel / abs(l_wheel)
-            self.x += sign * sin(self.orientation) * self.speed
-            self.y += sign * cos(self.orientation) * self.speed
+            tmp_x = self.x + sign * sin(self.orientation) * self.speed
+            tmp_y = self.y + sign * cos(self.orientation) * self.speed
+            tmp_rect = pygame.Rect(tmp_x, tmp_y, 16, 16)
+            for c in collidables:
+                if tmp_rect.colliderect(c.rect) and c != self:
+                    if hasattr(c, 'moveable') and c.moveable == True: #collided with moveable object
+                        c.move(sign * sin(self.orientation) * self.speed, sign * cos(self.orientation) * self.speed)
+                    collision_flag = True
+            if not collision_flag:
+                self.x = tmp_x
+                self.y = tmp_y
             if sign < 0: #moving in REVERSE
                 if self.rangefinder() > INVALID_REVERSE_THRESHOLD:
                     invalid_reverse_flag = True
@@ -108,18 +111,8 @@ class TankDriveBot:
                 self.rotate_time = 0
             else:
                 self.rotate_time += 1
+        self.rect = pygame.Rect(self.x, self.y, 16, 16)
         self.orientation %= (2 * pi) 
-        if tmp_x == self.x and tmp_y == self.y:
-            self.stationary_time += 1
-        else:
-            self.stationary_time = 0
-            for c in collidables:
-                if c != self and c != self.los:
-                    if self.rect.colliderect(c.rect):
-                        self.x = tmp_x
-                        self.y = tmp_y
-                        collision_flag = True
-            self.rect = pygame.Rect(self.x,self.y,16,16)
         if self.stationary_time >= STATIONARY_THRESHOLD:
             stationary_flag = True
         if self.rotate_time * self.rotate_rate >= ROTATE_THRESHOLD:
@@ -147,104 +140,104 @@ class TankDriveBot:
 
 
 
-class DankDriveBot:
-    def __init__(self, x, y, speed, rotate_rate, orientation, controller, los_range = 130):
-        self.x = x
-        self.y = y
-        self.orientation = orientation
-        self.speed = speed
-        self.rotate_rate = rotate_rate
-        self.controller = controller
-        self.rect = pygame.Rect(self.x,self.y,16,16)
-        self.los_range = los_range 
-        self.los = None
-        
-        self.stationary_time = 0
-        self.rotate_time = 0
-        self.rotate_direction = 0
-
-    def draw(self, screen):
-        #pygame.draw.ellipse(self.surface, black, self.surface.get_rect(), 2)
-        if True: #to render rangefinder distance
-            font = pygame.font.Font(None, 16)
-            surface = font.render(str(self.rangefinder()), 0, blue)
-            screen.blit(surface, (self.x, self.y))
-        pygame.draw.circle(screen, blue, (int(floor(self.x)), int(floor(self.y))), 7, 1)
-        self.los = pygame.draw.line(screen, black, (self.x, self.y), (self.x + sin(self.orientation) * self.los_range, 
-                self.y + cos(self.orientation) * self.los_range))
-        #screen.blit(self.surface, (self.x, self.y))
-
-    def setpos(self,x,y):
-        self.x = x
-        self.y = y
-
-    def move(self,l_wheel,r_wheel):
-        stationary_flag = False
-        collision_flag = False
-        rotate_flag = False
-        invalid_reverse_flag = False
-        tmp_x = 0
-        tmp_y = 0
-        tmp_x += self.x
-        tmp_y += self.y
-
-        if l_wheel == r_wheel and r_wheel != 0:
-            sign = l_wheel / abs(l_wheel)
-            self.x += sign * sin(self.orientation) * self.speed
-            self.y += sign * cos(self.orientation) * self.speed
-            if sign < 0: #moving in REVERSE
-                if self.rangefinder() > INVALID_REVERSE_THRESHOLD:
-                    invalid_reverse_flag = True
-            self.rotate_time = 0
-        elif l_wheel == 1 and r_wheel == -1: #pivot in-place towards the right
-            self.orientation += self.rotate_rate    
-            if self.rotate_direction != 1:
-                self.rotate_direction = 1
-                self.rotate_time = 0
-            else:
-                self.rotate_time += 1
-        elif l_wheel == -1 and r_wheel == 1: #pivot in-place towards the left
-            self.orientation -= self.rotate_rate    
-            if self.rotate_direction != -1:
-                self.rotate_direction = -1
-                self.rotate_time = 0
-            else:
-                self.rotate_time += 1
-        self.orientation %= (2 * pi) 
-        if tmp_x == self.x and tmp_y == self.y:
-            self.stationary_time += 1
-        else:
-            self.stationary_time = 0
-            for c in collidables:
-                if c != self and c != self.los:
-                    if self.rect.colliderect(c.rect):
-                        self.x = tmp_x
-                        self.y = tmp_y
-                        collision_flag = True
-            self.rect = pygame.Rect(self.x,self.y,16,16)
-        if self.stationary_time >= STATIONARY_THRESHOLD:
-            stationary_flag = True
-        if self.rotate_time * self.rotate_rate >= ROTATE_THRESHOLD:
-            rotate_flag = True
-        return (collision_flag, stationary_flag, rotate_flag, invalid_reverse_flag)
-            
-
-
-    def rangefinder(self): 
-        """Raycasts based on orientation / position of the bot, returns the distance from the closest object.
-        
-        For the moment performs a VERY costly computation of iterating over a distance."""
-        distance = float('inf')
-        if self.los is not None:
-            for c in collidables:
-                if c != self and self.los.colliderect(c.rect): #Collision detected
-                    DIST_STEP = 1 
-                    #Now we test a discrete set of distances from the origin (bot) to the end of the los
-                    for i in np.arange(0, self.los_range, DIST_STEP): #iterate from 0 to range in DIST_STEP steps
-                        point = (self.x + sin(self.orientation) * i, self.y + cos(self.orientation) * i)
-                        if c.rect.collidepoint(point[0], point[1]):    
-                            return float(i)
-        return distance
+#class DankDriveBot:
+#    def __init__(self, x, y, speed, rotate_rate, orientation, controller, los_range = 130):
+#        self.x = x
+#        self.y = y
+#        self.orientation = orientation
+#        self.speed = speed
+#        self.rotate_rate = rotate_rate
+#        self.controller = controller
+#        self.rect = pygame.Rect(self.x,self.y,16,16)
+#        self.los_range = los_range 
+#        self.los = None
+#        
+#        self.stationary_time = 0
+#        self.rotate_time = 0
+#        self.rotate_direction = 0
+#
+#    def draw(self, screen):
+#        #pygame.draw.ellipse(self.surface, black, self.surface.get_rect(), 2)
+#        if True: #to render rangefinder distance
+#            font = pygame.font.Font(None, 16)
+#            surface = font.render(str(self.rangefinder()), 0, blue)
+#            screen.blit(surface, (self.x, self.y))
+#        pygame.draw.circle(screen, blue, (int(floor(self.x)), int(floor(self.y))), 7, 1)
+#        self.los = pygame.draw.line(screen, black, (self.x, self.y), (self.x + sin(self.orientation) * self.los_range, 
+#                self.y + cos(self.orientation) * self.los_range))
+#        #screen.blit(self.surface, (self.x, self.y))
+#
+#    def setpos(self,x,y):
+#        self.x = x
+#        self.y = y
+#
+#    def move(self,l_wheel,r_wheel):
+#        stationary_flag = False
+#        collision_flag = False
+#        rotate_flag = False
+#        invalid_reverse_flag = False
+#        tmp_x = 0
+#        tmp_y = 0
+#        tmp_x += self.x
+#        tmp_y += self.y
+#
+#        if l_wheel == r_wheel and r_wheel != 0:
+#            sign = l_wheel / abs(l_wheel)
+#            self.x += sign * sin(self.orientation) * self.speed
+#            self.y += sign * cos(self.orientation) * self.speed
+#            if sign < 0: #moving in REVERSE
+#                if self.rangefinder() > INVALID_REVERSE_THRESHOLD:
+#                    invalid_reverse_flag = True
+#            self.rotate_time = 0
+#        elif l_wheel == 1 and r_wheel == -1: #pivot in-place towards the right
+#            self.orientation += self.rotate_rate    
+#            if self.rotate_direction != 1:
+#                self.rotate_direction = 1
+#                self.rotate_time = 0
+#            else:
+#                self.rotate_time += 1
+#        elif l_wheel == -1 and r_wheel == 1: #pivot in-place towards the left
+#            self.orientation -= self.rotate_rate    
+#            if self.rotate_direction != -1:
+#                self.rotate_direction = -1
+#                self.rotate_time = 0
+#            else:
+#                self.rotate_time += 1
+#        self.orientation %= (2 * pi) 
+#        if tmp_x == self.x and tmp_y == self.y:
+#            self.stationary_time += 1
+#        else:
+#            self.stationary_time = 0
+#            for c in collidables:
+#                if c != self and c != self.los:
+#                    if self.rect.colliderect(c.rect):
+#                        self.x = tmp_x
+#                        self.y = tmp_y
+#                        collision_flag = True
+#        self.rect = pygame.Rect(self.x,self.y,16,16)
+#        if self.stationary_time >= STATIONARY_THRESHOLD:
+#            stationary_flag = True
+#        if self.rotate_time * self.rotate_rate >= ROTATE_THRESHOLD:
+#            rotate_flag = True
+#        return (collision_flag, stationary_flag, rotate_flag, invalid_reverse_flag)
+#            
+#
+#
+#    def rangefinder(self): 
+#        """Raycasts based on orientation / position of the bot, returns the distance from the closest object.
+#        
+#        For the moment performs a VERY costly computation of iterating over a distance."""
+#        distance = float('inf')
+#        if self.los is not None:
+#            for c in collidables:
+#                if c != self and self.los.colliderect(c.rect): #Collision detected
+#                    DIST_STEP = 1 
+#                    #Now we test a discrete set of distances from the origin (bot) to the end of the los
+#                    for i in np.arange(0, self.los_range, DIST_STEP): #iterate from 0 to range in DIST_STEP steps
+#                        point = (self.x + sin(self.orientation) * i, self.y + cos(self.orientation) * i)
+#                        if c.rect.collidepoint(point[0], point[1]):    
+#                            return float(i)
+#        return distance
 
 
 
@@ -291,9 +284,48 @@ def generate_positions_by_minimum_distance(shape, num_bots, min_distance):
         #print "Remaining points: %s %s" % (len(x_points), len(y_points))
         return zip(x_pos, y_pos)
 
+def generate_positions_by_minimum_distance_with_obstacles(shape, num_bots, min_distance):
+    """Returns a list of positions for all the bots such that each bot is some minimum distance
+    from all the other bots, but their positions are otherwise randomly generated.
+    
+    Positions are returned as (x, y) tuples."""
+    x_pos = []
+    y_pos = []
+    
+    x_points = list(np.arange(10, shape[0] - 10))
+    y_points = list(np.arange(10, shape[1] - 10))
+    while len(x_pos) < num_bots and len(x_points) > 0 and len(y_points) > 0:
+        ind_x = random.choice(range(len(x_points))) #select random point
+        ind_y = random.choice(range(len(y_points)))
+        x = x_points.pop(ind_x)
+        y = y_points.pop(ind_y)
+        #CHECK FOR COLLISION / IN OBSTACLES
+        collide = False
+        for c in collidables:
+            if c.rect.collidepoint(x, y):
+                collide = True
+        #
+        if collide:
+            continue
+        minimum = float('inf')  #keep track of minimum distance
+        for point in range(len(x_pos)):
+            distance = sqrt((x_pos[point] - x)**2 + (y_pos[point] - y)**2)        
+            if distance < minimum:
+                minimum = distance
+        if minimum <= min_distance:
+            continue
+        else:
+            x_pos.append(x)
+            y_pos.append(y)
+    if len(x_pos) < num_bots:
+        print "SHIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIi", zip(x_pos, y_pos)
+        return None
+    else:
+        #print "Remaining points: %s %s" % (len(x_points), len(y_points))
+        return zip(x_pos, y_pos)
 def initialize_collidable_obstacles(ENV_SHAPE, num, mean_width, w_var, mean_height, h_var, min_space = 100):
     collidables = []
-    pos = generate_positions_by_minimum_distance(ENV_SHAPE, num, min_space)
+    pos = generate_positions_by_minimum_distance_with_obstacles(ENV_SHAPE, num, min_space)
     for x, y in pos:
         height = mean_height + h_var * random.random() * random.choice((1, -1))
         width = mean_width + w_var * random.random() * random.choice((1, -1))
@@ -335,7 +367,7 @@ class Environment:
 
     def play(self):
         ## INITIALIZE POSITIONS
-        positions = generate_positions_by_minimum_distance(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
+        positions = generate_positions_by_minimum_distance_with_obstacles(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
         for i in range(len(self.bots)): #for now we just space them horizontally 
             #self.bots[i].setpos(100 * i + 50, 50 * i + 50)
             self.bots[i].setpos(positions[i][0], positions[i][1])
@@ -390,11 +422,26 @@ class Environment:
                         closest = distance
             self.feedback += closest #should never be inf
         self.bots[i].controller._feedback(self.feedback)
+
+        collidables = []
+        collidables.append(collidable(0, 0, SCREENSIZE[0], 3, blue))
+        collidables.append(collidable(0, 0, 3, SCREENSIZE[1], blue))
+        collidables.append(collidable(SCREENSIZE[0] - 1, 0, 3, SCREENSIZE[1], blue))
+        collidables.append(collidable(0, SCREENSIZE[1] - 1, SCREENSIZE[0], 3, blue))
+        #initialize inner walls, if necessary
+        #def initialize_collidable_obstacle(ENV_SHAPE, num, mean_width, w_var, mean_height, h_var, min_space = 100):
+        collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 58, 100, 40, 3, 0, 70)
+        collidables.extend(collidable_initializer) 
+        collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 58, 3, 0, 110, 40, 70)
+        collidables.extend(collidable_initializer) 
+        #
+        collidables.extend(bots)
+        if player: collidables.append(player)
         print("GENERATION FEEDBACK: ", self.feedback)    
         self.feedback = 0 #reset feedback at the end of the epoch
-        positions = generate_positions_by_minimum_distance(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
+        positions = generate_positions_by_minimum_distance_with_obstacles(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
         while positions is None: #we try again <3
-            positions = generate_positions_by_minimum_distance(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
+            positions = generate_positions_by_minimum_distance_with_obstacles(self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
         for i in range(len(self.bots)): #for now we just space them horizontally 
             #self.bots[i].setpos(100 * i + 50, 50 * i + 50)
             self.bots[i].setpos(positions[i][0], positions[i][1])
@@ -441,9 +488,9 @@ if __name__ == '__main__':
     DURATION = 6000 
     SPEED = 1000
 
-    MINIMUM_BOT_DISTANCE = 10 #used for initializing the bots with random-but-spaced points
+    MINIMUM_BOT_DISTANCE = 300 #used for initializing the bots with random-but-spaced points
 
-    player = None
+    player = TankDriveBot(100, 100, 3, 0.2, 0, None) 
     bots = []
     NUM_BOTS = 7
     controller = DumbController()
@@ -452,15 +499,8 @@ if __name__ == '__main__':
 
         #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
         bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
-    collidables = []
-
-    class collidable:
-        x = 0
-        y = 0
-        w = 0
-        h = 0
-        rect = pygame.Rect(x,y,w,h)
-        color = [0,0,0]
+                        #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
+    class collidable:     #TODO: CREDIT stackoverflow.com/questions/8195649/python-pygame-collision-detection-with-rects 
         def __init__(self,x,y,w,h,color):
             self.x = x
             self.y = y
@@ -468,21 +508,49 @@ if __name__ == '__main__':
             self.h = h
             self.color = color
             self.rect = pygame.Rect(x,y,w,h)
+            self.moveable = False
         def draw(self, screen):
             pygame.draw.rect(screen,self.color,[self.x,self.y,self.w,self.h],6)
+        def move(self, d_X, d_Y): #move with force of delta X and delta Y
+            pass
+
+    class moveable(collidable):
+        def __init__(self, inertia, *args):
+            collidable.__init__(self, *args)
+            self.moveable = True
+            self.inertia = inertia
+
+        def move(self, d_X, d_Y): #TODO: Add to seperate move cycle, to enable inertias with > single bot's potential delta
+            factor = sqrt(d_X ** 2 + d_Y **2) / float(self.inertia)
+            if factor > 1: #force overcomes inertia, move moveable
+                collision_flag = False
+                tmp_x = self.x + d_X * factor
+                tmp_y = self.y + d_Y * factor
+                tmp_rect = pygame.Rect(tmp_x, tmp_y, self.w, self.h)
+                for c in collidables:
+                    if tmp_rect.colliderect(c.rect) and c != self:
+                        collision_flag = True
+                if not collision_flag:
+                    self.x = tmp_x
+                    self.y = tmp_y
+                    self.rect = tmp_rect
+
+
+
     #initialize outer walls
+    collidables = []
     collidables.append(collidable(0, 0, SCREENSIZE[0], 3, blue))
     collidables.append(collidable(0, 0, 3, SCREENSIZE[1], blue))
     collidables.append(collidable(SCREENSIZE[0] - 1, 0, 3, SCREENSIZE[1], blue))
     collidables.append(collidable(0, SCREENSIZE[1] - 1, SCREENSIZE[0], 3, blue))
     #initialize inner walls, if necessary
-    #def initialize_collidable_obstacle(ENV_SHAPE, num, mean_width, w_var, mean_height, h_var, min_space = 100):
-    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 48, 100, 40, 3, 0, 70)
+    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 28, 100, 40, 7, 0, 90)
     collidables.extend(collidable_initializer) 
-    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 48, 3, 0, 110, 40, 70)
+    collidable_initializer = initialize_collidable_obstacles(SCREENSIZE, 28, 7, 0, 110, 40, 70)
     collidables.extend(collidable_initializer) 
     #
     collidables.extend(bots)
+    collidables.extend([moveable(2, random.random() * 700, random.random() * 700, 10, 10, green) for i in range(7)])
     if player: collidables.append(player)
     env = Environment(SCREENSIZE, SPEED, controller, bots, collidables, player = player)
     env.play() 
