@@ -301,10 +301,6 @@ def initialize_collidable_obstacles(ENV_SHAPE, num, mean_width, w_var, mean_heig
     return collidables
 
 
-
-
-
-
 class Environment:
     def __init__(self, shape, speed, controllers, bots, collidable, player = None):
         self.speed = speed 
@@ -455,12 +451,7 @@ if __name__ == '__main__':
     collidables = []
 
     class collidable:
-        x = 0
-        y = 0
-        w = 0
-        h = 0
-        rect = pygame.Rect(x,y,w,h)
-        color = [0,0,0]
+
         def __init__(self,x,y,w,h,color):
             self.x = x
             self.y = y
@@ -470,6 +461,7 @@ if __name__ == '__main__':
             self.rect = pygame.Rect(x,y,w,h)
         def draw(self, screen):
             pygame.draw.rect(screen,self.color,[self.x,self.y,self.w,self.h],6)
+
     #initialize outer walls
     collidables.append(collidable(0, 0, SCREENSIZE[0], 3, blue))
     collidables.append(collidable(0, 0, 3, SCREENSIZE[1], blue))

@@ -17,7 +17,7 @@ D = 2  # Dimension of search space
 c = 0.0005  # iteration rate
 c0 = 0.005 # leader iteration rate
 Y = [500, 500] # final position of leader
-goal = 1  # The final error should be really small
+goal = 0.1  # The final error should be really small
 running = True
 
 class Swarm_Simulation:
@@ -31,7 +31,7 @@ class Swarm_Simulation:
 		self.error = float("inf")  # Initial error is HUGE. We want to minimize this.
 		self.steps = 0
 
-		self.P = 800 * np.random.rand(D, N)  # Initial positions of robots in a 10x10 unit space
+		self.P = 800 * np.random.rand(D, N)  # Initial positions of robots in a 800*800 unit space
 		self.Pn = np.zeros((D, N), dtype=np.int)  # Position bucket I THINK...
 
 
@@ -40,8 +40,6 @@ class Swarm_Simulation:
 
 
 	def Run(self):
-
-
 
 		while (running):
 
