@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(joy_bot)
+project(swarm)
 
 find_package(catkin REQUIRED COMPONENTS
   rospy
@@ -22,11 +22,12 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
+catkin_install_python(PROGRAMS scripts/sim.py
+                      DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
 catkin_install_python(PROGRAMS scripts/control.py
                       DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
-catkin_install_python(PROGRAMS scripts/serial_node.py
-                      DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
  
  
  

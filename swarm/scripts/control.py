@@ -16,7 +16,7 @@ class TeleRobot:
         # Subscribe and Publish to Topics
         rospy.Subscriber("joy", Joy, self.array_callback)
 
-        self.pub_twist = rospy.Publisher("/robo_twist", Twist, queue_size=10, latch=True)
+        self.pub_twist = rospy.Publisher("/motor_control", Twist, queue_size=10, latch=True)
 
         # Initialize global variables and constants
         self.linear = 0
@@ -27,8 +27,8 @@ class TeleRobot:
         self.updater()
 
     def array_callback(self, joy_array):
-        self.linear = joy_array.axes[1]
-        self.angular = joy_array.axes[3]
+        self.linear = joy_array.axes[3]
+        self.angular = -joy_array.axes[1]
 
     def updater(self):
         while not rospy.is_shutdown():

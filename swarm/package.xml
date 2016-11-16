@@ -1,8 +1,8 @@
 <package>
-  <name>joy_bot</name>
+  <name>swarm</name>
   <version>0.2.2</version>
   <description>
-    Joy stick control of a bot
+    Swarm Simulation
   </description>
   <maintainer email="ogiovanniruiz@gmail.com">Oscar Ruiz</maintainer>
   <license>BSD</license>
