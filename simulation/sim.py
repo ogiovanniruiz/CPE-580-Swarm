@@ -18,6 +18,11 @@ LEFT = [-1,0]
 RIGHT = [1,0]
 NOTMOVING = [0,0]
 
+
+
+MOVEABLE_FRICTION = 0.4
+BOT_MOMENTUM = 0.0
+MAX_SPEED = sqrt(18.0)
 class Collidable:     #TODO: CREDIT stackoverflow.com/questions/8195649/python-pygame-collision-detection-with-rects 
     def __init__(self,x,y,w,h,color):
         self.x = x
@@ -38,21 +43,34 @@ class Moveable(Collidable):
         self.moveable = True
         self.inertia = inertia
 
-    def move(self, env, d_X, d_Y): #TODO: Add to seperate move cycle, to enable inertias with > single bot's potential delta
+    def move(self, env, d_X, d_Y, collision): #TODO: Add to seperate move cycle, to enable inertias with > single bot's potential delta
+        global MOVEABLE_FRICTION 
         factor = sqrt(d_X ** 2 + d_Y **2) / float(self.inertia)
         if factor > 1: #force overcomes inertia, move moveable
+            dim_X = d_X * (1 / float(factor))
+            dim_Y = d_Y * (1 / float(factor))
             collision_flag = False
-            tmp_x = self.x + d_X * (1 / factor)
-            tmp_y = self.y + d_Y * (1 / factor)
+            tmp_x = self.x + dim_X
+            tmp_y = self.y + dim_Y 
             tmp_rect = pygame.Rect(tmp_x, tmp_y, self.w, self.h)
             for c in env.collidables:
                 if tmp_rect.colliderect(c.rect) and c != self:
-                    collision_flag = True
+                    if hasattr(c, 'moveable') and c.moveable == True:
+                        dim_X *= MOVEABLE_FRICTION
+                        dim_Y *= MOVEABLE_FRICTION
+                        collision.setdefault(c, []).append((dim_X, dim_Y))
+                        tmp_x -= dim_X 
+                        tmp_y -= dim_Y
+                    else:
+                        collision_flag = True
             if not collision_flag:
                 self.x = tmp_x
                 self.y = tmp_y
                 self.rect = tmp_rect
+        return collision
     
+                #if hasattr(c, 'moveable') and c.moveable == True: #collided with moveable object
+                #    collision.setdefault(c, []).append((res[0], res[1]))
 
 class Controller:
     @abstractmethod
@@ -111,6 +129,7 @@ class MultiNEATWrapper:
     def update(self):
         print " ------------------------------ CURRENT BEST FITNESS: ", self.population.GetBestGenome().GetFitness()
         print " ------------------------------ BEST FITNESS EVER: ", self.population.GetBestFitnessEver()
+        raw_input("Press enter to continue!")
         self.population.Epoch()
         self.genomes = NEAT.GetGenomeList(self.population)
         self.current = 0
@@ -140,7 +159,8 @@ class MultiNEATController:
         net.Input(senses)
         net.Activate()
         output = net.Output()
-        #self.tick()
+        #print "OUTPUT: ", [o for o in output]
+        self.tick()
         #self.steps += 1
         return output 
 
@@ -149,7 +169,8 @@ class MultiNEATController:
 
     def _feedback(self, terminal = False, *args): #TODO: Currently only takes a single bot's fitness
         if terminal == True and self.steps > 0: #only update / change genomes on update = True
-            self.fitness = -1 * args[0] 
+            #self.fitness = -1 * args[0] 
+            self.fitness = args[0]
             self.steps = 0
             self.wrapper.set_current_fitness(self.fitness) #assumes 1-element feedback
 
@@ -168,21 +189,21 @@ params.OldAgeTreshold = 20
 params.MinSpecies = 1
 params.MaxSpecies = 5
 params.RouletteWheelSelection = False
-params.RecurrentProb = 0.05
+params.RecurrentProb = 0.15
 params.OverallMutationRate = 0.4
     
-params.MutateWeightsProb = 0.2
+params.MutateWeightsProb = 0.25
     
 params.WeightMutationMaxPower = 2.5
 params.WeightReplacementMaxPower = 5.0
 params.MutateWeightsSevereProb = 0.5
 params.WeightMutationRate = 0.15
     
-params.MaxWeight = 11
+params.MaxWeight = 9
     
 params.MutateAddNeuronProb = 0.1
 params.MutateAddLinkProb = 0.1
-params.MutateRemLinkProb = 0.05
+params.MutateRemLinkProb = 0.1
     
 params.MinActivationA  = 4.9
 params.MaxActivationA  = 4.9
@@ -199,50 +220,11 @@ params.SurvivalRate = 0.2
 
 
 
-g = NEAT.Genome(0, 5, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
+g = NEAT.Genome(0, 6, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
 pop = NEAT.Population(g, params, True, 1.0, 0)
 NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
 
 ##
-
-
-## KERAS WRAPPER AND CONTROLLER HERE
-
-import keras
-from rl.core import Processor
-model = keras.models.Sequential()
-model.add(keras.layers.core.Activation('sigmoid', input_shape = (5,1)))
-model.add(keras.layers.recurrent.SimpleRNN(3))    
-print model.summary()
-
-
-
-class EnvironmentProcessor(Processor):
-    pass
-
-
-class KerasDQNWrapper:
-    def __init__(model):
-        pass
-
-
-class KerasDQNController: 
-    def __init__(self, model): 
-        pass               
-
-
-
-
-
-
-
-    def _feedback(self, terminal = False, *args):
-        pass
-
-
-
-
-## END KERAS
 
 
 
@@ -260,6 +242,8 @@ class RangefinderBot:
         self.rect = pygame.Rect(self.x,self.y,rect_h,rect_w)
         self.los_range = los_range 
         self.los = None
+
+        self.vector = np.zeros(2)
         
     def setpos(self,x,y):
         self.x = x
@@ -361,9 +345,17 @@ class TankDriveBot(RangefinderBot):
 
 class LinearBot(RangefinderBot):
     def move(self, v, h, delta_orientation):
+        global BOT_MOMENTUM, MAX_SPEED
         self.orientation += delta_orientation * self.rotate_rate
         self.orientation %= (2 * pi) 
-        return (h * self.speed, v * self.speed)
+        speed = [self.vector[0] + h * self.speed, self.vector[1] + v * self.speed]#v * self.speed)
+        magnitude = sqrt(abs(speed[0]) + abs(speed[1]))
+        if magnitude > MAX_SPEED:
+            factor = MAX_SPEED / float(magnitude)
+            speed[0] *= factor
+            speed[1] *= factor
+        self.vector = np.array((BOT_MOMENTUM * speed[0], BOT_MOMENTUM * speed[1]))
+        return speed
 
 
 class Environment:
@@ -462,11 +454,11 @@ class Environment:
         while positions is None:
             #positions = generate_positions_by_minimum_distance_with_obstacles(self, self.shape, len(self.bots), MINIMUM_BOT_DISTANCE)
             positions = generate_positions_within_region_with_obstacles(self, self.shape, len(self.bots), 
-                    pygame.Rect(self.shape[0] - 300, self.shape[1] - 300, 300, 300))
+                    pygame.Rect(self.shape[0] - 200, self.shape[1] - 200, 300, 300))
         for i in range(len(self.bots)): #for now we just space them horizontally 
             #self.bots[i].setpos(100 * i + 50, 50 * i + 50)
             self.bots[i].setpos(positions[i][0], positions[i][1])
-            self.bots[i].orientation = random.random() * 2 * pi 
+            self.bots[i].orientation = pi 
 
         players = []
         #players.append(LinearBot(100, 100, 3, 0.2, 0, None))
@@ -478,14 +470,22 @@ class Environment:
         collidables.append(Collidable(self.shape[0] - 5, 5, 3, self.shape[1], blue))
         collidables.append(Collidable(5, self.shape[1] - 5, self.shape[0], 3, blue))
         ##initialize inner walls, if necessary
-        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 13, 100, 40, 7, 0, 150)
+        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 100, 50, 7, 0, 90)
         #collidables.extend(collidable_initializer) 
-        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 110, 40, 100)
+        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 100, 50, 100)
         #collidables.extend(collidable_initializer) 
         #
         collidables.extend(self.bots)
-        collidables.extend([Moveable(1.5, 
-            self.shape[0]/2 + random.random() * 200, random.random() * (self.shape[1] - 50), 15, 15, green) for i in range(5)])
+
+        #initialize moveables!
+        moveables = []
+        moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)]                 
+        moveables.extend([Moveable(1.5, self.shape[0] / 2 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)])
+        #moveables = [Moveable(1.5, 
+        #    self.shape[0]/2 + random.random() * 100, self.shape[1]/2 + random.choice((-1, 1)) * random.random() * 200 , 
+        #    15, 15, green) for i in range(5)]
+        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(4)]                 
+        collidables.extend(moveables)
 
         if len(players): 
             collidables.extend(players)
@@ -517,11 +517,19 @@ class Environment:
         if self.player:
             for player in self.player:
                 collision = self.movement_func(self, player, self.player_instructions, collision)
-        for c in range(len(collision)):
-            net_x = sum([i[0] for i in collision.values()[c]])
-            net_y = sum([i[1] for i in collision.values()[c]])
+        #for c in range(len(collision)):
+        #    net_x = sum([i[0] for i in collision.values()[c]])
+        #    net_y = sum([i[1] for i in collision.values()[c]])
+        #    #print "NET_X: %x   NET_Y : %x" % (net_x, net_y)
+        #    collision.keys()[c].move(self, net_x, net_y)
+        while len(collision) is not 0:
+            c = collision.keys()[0]
+            net_x = sum([i[0] for i in collision.values()[0]])
+            net_y = sum([i[1] for i in collision.values()[0]])
             #print "NET_X: %x   NET_Y : %x" % (net_x, net_y)
-            collision.keys()[c].move(self, net_x, net_y)
+            collision.pop(c)
+            collision = c.move(self, net_x, net_y, collision)
+            
 
             
 
@@ -616,7 +624,7 @@ def generate_positions_within_region_with_obstacles(environment, shape, num_bots
         #CHECK FOR COLLISION / IN OBSTACLES
         collide = False
         for c in environment.collidables:
-            if c.rect.collidepoint(x, y):
+            if c.rect.colliderect(pygame.Rect(x, y, 16, 16)):
                 collide = True
         #
         if collide:
@@ -719,6 +727,11 @@ def rangefinder_sensor(env, bot, *args):
     dist = [dist,]
     dist.extend(color)
     return dist
+
+def rangefinder_orientation_sensor(env, bot, *args):
+    dist = rangefinder_sensor(env, bot, *args)
+    dist.append(bot.orientation)
+    return dist
     
 
 if __name__ == '__main__':
@@ -748,12 +761,12 @@ if __name__ == '__main__':
         #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
         bots.append(LinearBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
                         #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
-    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,#feedback_by_total_bot_distance_from_region,# 
-    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
-    #        default_clock_threshold = 500, default_region = pygame.Rect(0, 0, 220, 220))
-    env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,# 
+    env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_total_bot_distance_from_region,# 
             movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
-            default_clock_threshold = 300, default_region = pygame.Rect(0, 0, 220, 220))
+            default_clock_threshold = 500, default_region = pygame.Rect(0, 0, 220, 220))
+    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,# 
+    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_orientation_sensor,
+    #        default_clock_threshold = 300, default_region = pygame.Rect(0, 0, 220, 220))
     env.play() 
 
 
