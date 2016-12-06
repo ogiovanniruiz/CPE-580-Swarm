@@ -15,10 +15,12 @@ screenBGColor = black  # White background
 N = 20  # Number of Robots
 D = 2  # Dimension of search space
 c = 0.0005  # iteration rate
-c0 = 0.005 # leader iteration rate
+c0 = 0.001 # leader iteration rate
 Y = [500, 500] # final position of leader
 goal = 0.1  # The final error should be really small
 running = True
+
+A = np.zeros((D,N), dtype=np.int)
 
 class Swarm_Simulation:
 	def __init__(self):
@@ -33,6 +35,8 @@ class Swarm_Simulation:
 
 		self.P = 800 * np.random.rand(D, N)  # Initial positions of robots in a 800*800 unit space
 		self.Pn = np.zeros((D, N), dtype=np.int)  # Position bucket I THINK...
+
+		self.rand_speeds = np.random.randn(D,N)
 
 
 		self.P0 = 800 * np.random.rand(D, 1)
@@ -55,7 +59,9 @@ class Swarm_Simulation:
 					for j in range(N):
 						pygame.draw.circle(self.screen, black, [int(self.P[0, i]), int(self.P[1, i])], 7, 1)
 
-						self.Pn[:, i] = self.Pn[:, i] + c * 0.1 * (self.P[:, j] - self.P[:, i]) - c * (self.P[:, j] - self.P0[:, 0])
+						#self.Pn[:, i] = self.Pn[:, i] + c * 0.1 * (self.P[:, j] - self.P[:, i]) - c * (self.P[:, j] - self.P0[:, 0])
+
+						self.Pn[:, i] = self.Pn[:, i] + [self.rand_speeds[:, i] *0.1] - c * (self.P[:, i] - self.P0[:, 0]) * A[:,i]
 
 						pygame.draw.circle(self.screen, green, [int(self.P[0, i]), int(self.P[1, i])], 7, 1)
 
