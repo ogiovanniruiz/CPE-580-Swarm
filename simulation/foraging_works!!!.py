@@ -16,17 +16,17 @@ gold = [255, 215, 0]
 
 color_grad = [green,red,red,orange,orange,gold,gold,yellow,yellow,white,white]
 
-N = 50  # Number of Robots
+N = 100  # Number of Robots
 D = 2  # Dimension of search space
 dt = 0.005  # iteration rate
 running = True
 
-SCREENSIZE = [1000, 1000]  # Size of our output display
+SCREENSIZE = [1500, 1000]  # Size of our output display
 NESTSIZE = [50,50]
 RESOURCE_SIZE = [50,50]
-RESOURCE_LOCATION = [np.random.randint(0,SCREENSIZE[0]) - NESTSIZE[0],np.random.randint(0,SCREENSIZE[1]) - NESTSIZE[1]]
+RESOURCE_LOCATION = [np.random.randint(0,SCREENSIZE[0]),np.random.randint(0,SCREENSIZE[1])]
 
-#RESOURCE_LOCATION = [RESOURCE_SIZE[0]*4,SCREENSIZE[1]/2 - NESTSIZE[1]/2]
+#RESOURCE_LOCATION = [RESOURCE_SIZE[0] + NESTSIZE[0]*2,SCREENSIZE[1]/2 - NESTSIZE[1]/2]
 NEST_LOCATION = [SCREENSIZE[0]/2 - NESTSIZE[0]/2,SCREENSIZE[1]/2 - NESTSIZE[1]/2]
 
 nest = pygame.Rect(NEST_LOCATION[0],NEST_LOCATION[1],NESTSIZE[0],NESTSIZE[1])
@@ -34,7 +34,7 @@ food = pygame.Rect(RESOURCE_LOCATION[0], RESOURCE_LOCATION[1],RESOURCE_SIZE[0],R
 
 los = []
 
-los_size = 75
+los_size = 100
 
 screenBGColor = black  # Background Color
 
@@ -42,7 +42,7 @@ bots = []
 
 lines = []
 
-target = []
+beacon_locations = []
 
 A = np.random.rand(N,N)
 
@@ -56,10 +56,16 @@ class Swarm_Simulation:
 
         self.myfont = pygame.font.SysFont("monospace", 25)
 
-        self.P = (SCREENSIZE[0]/2)* np.ones((D, N),dtype=np.int)  # Initial positions of robots in screen
+        self.P = np.array(np.transpose([SCREENSIZE[0]/2, SCREENSIZE[1]/2])) * np.transpose(np.ones((D, N),dtype=np.int))  # Initial positions of robots in screen
+
+        self.P = np.transpose(self.P)
         self.Pn = np.zeros((D, N), dtype=np.int)  # Position bucket I THINK...
 
         self.connected = False
+
+        self.flag_1 = False
+
+        self.flag_2 = False
 
         for i in range(N):
 
@@ -69,6 +75,8 @@ class Swarm_Simulation:
 
             los.append(Detectable(self.Pn[0,i]-los_size/2, self.Pn[1,i]-los_size/2, los_size, los_size, green,'walker',False,0))
 
+        beacon_locations.append([RESOURCE_LOCATION[0] + RESOURCE_SIZE[0]*2,RESOURCE_LOCATION[1] + RESOURCE_SIZE[1]*2 ])
+
         self.num_food_at_resource = 500
 
         self.num_food_at_nest = 0
@@ -77,7 +85,7 @@ class Swarm_Simulation:
 
     def Run(self):
 
-        while (running):
+        while (self.num_food_at_resource >  0):
 
             label_nest_previous = self.myfont.render(str(self.num_food_at_nest), 1, black)
 
@@ -87,6 +95,7 @@ class Swarm_Simulation:
             label_resource_previous = self.myfont.render(str(self.num_food_at_resource), 1, black)
 
             self.screen.blit(label_resource_previous, (RESOURCE_LOCATION[0]+ RESOURCE_SIZE[0]/4, RESOURCE_LOCATION[1]+RESOURCE_SIZE[1]/2))
+
 
             self.Pn = self.P
 
@@ -134,11 +143,13 @@ class Swarm_Simulation:
 
                     if not self.connected:
 
+
                         if (los[i].rect.colliderect(food)):
 
                             los[i].mode = 'beacon'
 
                             los[i].grad = 1
+
 
                         elif (A[i,j] == 1) and (los[i].mode == 'walker') and (los[j].mode == "beacon"):
 
@@ -146,11 +157,21 @@ class Swarm_Simulation:
 
                             lines.append(Lines(self.P[:,i], self.P[:,j], bots[j].color))
                             
+                            if (los[i].grad == 5) and (len(beacon_locations) < 2):
+
+                                beacon_locations.append([self.Pn[0, i] + los_size,self.Pn[1,i]+los_size])
+
                             los[i].mode = 'beacon' 
 
                         elif (los[i].rect.colliderect(nest)) and (los[i].mode == "beacon"):
 
-                            lines.append(Lines(NEST_LOCATION, self.P[:,i], bots[i].color)) 
+                            lines.append(Lines(NEST_LOCATION, self.P[:,i], bots[i].color))
+
+                            if self.flag_2 == False:
+
+                                beacon_locations.append([NEST_LOCATION[0] + NESTSIZE[0]*2, NEST_LOCATION[1]+NESTSIZE[1]*2])
+
+                            self.flag_2 = True
 
                             self.connected = True            
 
@@ -167,11 +188,14 @@ class Swarm_Simulation:
 
                         if  (los[i].mode == 'gatherer'):
 
+
                             if bots[i].rect.colliderect(food) and los[i].has_food == False:
 
                                 los[i].has_food = True
 
                                 self.num_food_at_resource -= 1
+
+                                los[i].grad = 0
 
                             elif bots[i].rect.colliderect(nest) and los[i].has_food == True :
 
@@ -179,35 +203,44 @@ class Swarm_Simulation:
 
                                 self.num_food_at_nest += 1
 
+                                los[i].grad = len(beacon_locations)-1
+
+                            elif (A[i,j] == 1) and (los[i].mode == 'gatherer') and (los[j].mode == "beacon") and (los[j].grad ==5):
+
+                                los[i].grad = int(round(len(beacon_locations)/2))
 
                             elif los[i].has_food == False:
 
-                                rand_speeds = np.random.randint(1000, size=(D, N)) - 500
+                                rand_speeds = np.random.randint(500, size=(D, N)) - 250
 
-                                self.Pn[1, i] = self.Pn[1, i] + (RESOURCE_LOCATION[1] + RESOURCE_SIZE[1]*3- self.P[1, i]) * dt + [rand_speeds[1, i] * dt]
+                                if los[i].grad == 0:
+                                    self.Pn[:, i] = self.Pn[:, i] + (beacon_locations[0] - self.P[:, i]) * dt + [rand_speeds[:, i] * dt]
+                                else:
 
-                                self.Pn[0, i] = self.Pn[0, i] + (RESOURCE_LOCATION[0]  + RESOURCE_SIZE[0]*3 - self.P[0, i]) * dt + [rand_speeds[0, i] * dt]
+                                    self.Pn[:, i] = self.Pn[:, i] + (beacon_locations[los[i].grad - 1] - self.P[:, i]) * dt + [rand_speeds[:, i] * dt]
 
                             elif los[i].has_food == True:
 
-                                rand_speeds = np.random.randint(1000, size=(D, N)) - 500
+                                rand_speeds = np.random.randint(500, size=(D, N)) - 250
 
-                                self.Pn[1, i] = self.Pn[1, i] +  ((NEST_LOCATION[1] + NESTSIZE[1]*2- self.P[1,i]))*dt + [rand_speeds[1,i]*dt]
+                                if los[i].grad > (len(beacon_locations) -1):
 
-                                self.Pn[0, i] = self.Pn[0, i] +  (NEST_LOCATION[0] + NESTSIZE[0]*2 - self.P[0,i])*dt + [rand_speeds[0,i]*dt]
+                                    self.Pn[:, i] = self.Pn[:, i] + (beacon_locations[los[i].grad]  - self.P[:, i]) * dt + [rand_speeds[:, i] * dt]
+                                else:
+
+                                    self.Pn[:, i] = self.Pn[:, i] + (beacon_locations[los[i].grad + 1]  - self.P[:, i]) * dt + [rand_speeds[:, i] * dt]
 
                             else:
 
                                 rand_speeds = np.random.randint(500, size=(D, N)) - 250
 
-                                self.Pn[1, i] = self.Pn[1, i] + (RESOURCE_LOCATION[1] + RESOURCE_SIZE[1]*3 - self.P[1, i]) * dt + [rand_speeds[1, i] * dt]
+                                self.Pn[1, i] = self.Pn[1, i] + (NEST_LOCATION[1] + NESTSIZE[1]*3 - self.P[1, i]) * dt + [rand_speeds[1, i] * dt]
 
-                                self.Pn[0, i] = self.Pn[0, i] + (RESOURCE_LOCATION[0] + RESOURCE_SIZE[0]*3 - self.P[0, i]) * dt + [rand_speeds[0, i] * dt]
+                                self.Pn[0, i] = self.Pn[0, i] + (NEST_LOCATION[0] + NESTSIZE[0]*3 - self.P[0, i]) * dt + [rand_speeds[0, i] * dt]
 
 
                     else:
                         print ("CONNECTION LOST")
-
 
                     if (los[i].rect.colliderect(los[j].rect)):
                             
@@ -233,7 +266,6 @@ class Swarm_Simulation:
 
             self.P = self.Pn
 
-
             label_nest = self.myfont.render(str(self.num_food_at_nest), 1, white)
 
             self.screen.blit(label_nest, (NEST_LOCATION[0]+ NESTSIZE[0]/4, NEST_LOCATION[1]+NESTSIZE[1]/2))
@@ -243,11 +275,12 @@ class Swarm_Simulation:
 
             self.screen.blit(label_resource, (RESOURCE_LOCATION[0]+ RESOURCE_SIZE[0]/4, RESOURCE_LOCATION[1]+RESOURCE_SIZE[1]/2))
 
-
             pygame.draw.rect(self.screen, white,[NEST_LOCATION[0],NEST_LOCATION[1],NESTSIZE[0],NESTSIZE[1]],5)
 
             pygame.draw.rect(self.screen, red,[RESOURCE_LOCATION[0], RESOURCE_LOCATION[1],RESOURCE_SIZE[0],RESOURCE_SIZE[1]],5)
 
+            print(beacon_locations)
+            print(len(beacon_locations))
 
             pygame.display.update()
 
@@ -290,7 +323,6 @@ class Lines():
         pygame.draw.aaline(screen, self.color, self.pos1, self.pos2,1)
 
 if __name__ == '__main__':
-
     try:
         Swarm_Simulation()
 
