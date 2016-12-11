@@ -21,7 +21,7 @@ NOTMOVING = [0,0]
 
 
 MOVEABLE_FRICTION = 0.4
-BOT_MOMENTUM = 0.0
+BOT_MOMENTUM = 0.3
 MAX_SPEED = sqrt(18.0)
 class Collidable:     #TODO: CREDIT stackoverflow.com/questions/8195649/python-pygame-collision-detection-with-rects 
     def __init__(self,x,y,w,h,color):
@@ -129,7 +129,6 @@ class MultiNEATWrapper:
     def update(self):
         print " ------------------------------ CURRENT BEST FITNESS: ", self.population.GetBestGenome().GetFitness()
         print " ------------------------------ BEST FITNESS EVER: ", self.population.GetBestFitnessEver()
-        raw_input("Press enter to continue!")
         self.population.Epoch()
         self.genomes = NEAT.GetGenomeList(self.population)
         self.current = 0
@@ -154,7 +153,15 @@ class MultiNEATController:
         for net in self.networks.values():
            self.genome.BuildPhenotype(net) #theoretically build network 
 
+
     def __call__(self, senses, bot_id):
+        tmp = senses[:]
+        senses = []
+        MAX_OUTPUT = 100000
+        for s in tmp:
+            if s > MAX_OUTPUT: s = MAX_OUTPUT
+            senses.append(s)
+
         net = self.networks[bot_id]
         net.Input(senses)
         net.Activate()
@@ -178,26 +185,27 @@ class MultiNEATController:
             for net in self.networks.values():
                self.genome.BuildPhenotype(net) #theoretically build network 
 
+
 params = NEAT.Parameters()
 params.PopulationSize = 30
 params.DynamicCompatibility = True
 params.WeightDiffCoeff = 4.0
-params.CompatTreshold = 2.0
-params.YoungAgeTreshold = 10
+params.CompatTreshold = 1.5
+params.YoungAgeTreshold = 12
 params.SpeciesMaxStagnation = 15
 params.OldAgeTreshold = 20
 params.MinSpecies = 1
 params.MaxSpecies = 5
 params.RouletteWheelSelection = False
 params.RecurrentProb = 0.15
-params.OverallMutationRate = 0.4
+params.OverallMutationRate = 0.3
     
-params.MutateWeightsProb = 0.25
+params.MutateWeightsProb = 0.2
     
 params.WeightMutationMaxPower = 2.5
 params.WeightReplacementMaxPower = 5.0
-params.MutateWeightsSevereProb = 0.5
-params.WeightMutationRate = 0.15
+params.MutateWeightsSevereProb = 0.4
+params.WeightMutationRate = 0.45
     
 params.MaxWeight = 9
     
@@ -220,7 +228,8 @@ params.SurvivalRate = 0.2
 
 
 
-g = NEAT.Genome(0, 6, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
+#g = NEAT.Genome(0, 6, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
+g = NEAT.Genome(0, 29, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
 pop = NEAT.Population(g, params, True, 1.0, 0)
 NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
 
@@ -229,7 +238,7 @@ NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
 
 
 class RangefinderBot:
-    def __init__(self, x, y, speed, rotate_rate, orientation, controller, los_range = 130, rect_h = 16, rect_w = 16, color = blue):
+    def __init__(self, x, y, speed, rotate_rate, orientation, controller, los_range = 90, rect_h = 16, rect_w = 16, color = blue):
         self.x = x
         self.y = y
         self.rect_h = rect_h
@@ -297,6 +306,77 @@ class RangefinderBot:
                         pass
         return distance, color 
 
+class PrickleBot(RangefinderBot):
+    def __init__(self, num_los = 4, *args, **kwargs): 
+        RangefinderBot.__init__(self, *args, **kwargs) 
+        self.num_los = num_los
+        self.los_inc = 2. * pi / num_los    #spacing between los lines
+
+    
+    def draw(self, env, screen):
+        #pygame.draw.ellipse(self.surface, black, self.surface.get_rect(), 2)
+        if True: #to render rangefinder distance
+            font = pygame.font.Font(None, 16)
+            try:
+                surface = font.render(str(self.rangefinder(env)), 0, blue)
+                screen.blit(surface, (self.x, self.y))
+            except:  #out of range
+                pass
+        pygame.draw.circle(screen, self.color, (int(floor(self.x)), int(floor(self.y))), 7, 1)
+        self.los = []
+        for l in range(self.num_los):
+            try:
+                self.los.append(pygame.draw.line(screen, white, (self.x, self.y), (self.x + sin(self.los_inc * l) * self.los_range, 
+                        self.y + cos(self.los_inc * l) * self.los_range)))
+            except: #out of range
+                self.los.append(None)
+            #screen.blit(self.surface, (self.x, self.y))
+
+
+    def rangefinder(self, env):
+        colors = []
+        distances = []
+        los = None
+        collisions = [] #TODO: Utilize this to fix multiple objects in LOS not being prioritized by distance (min)
+        for l in range(self.num_los):
+            collision_point = float('inf')
+            color = [255, 255, 255]
+            try:
+                los = self.los[l]
+            except TypeError:
+                los = None
+            if los is not None:
+                if los.colliderect(env.default_region):
+                    color = red
+                    DIST_STEP = 1 
+                    #Now we test a discrete set of distances from the origin (bot) to the end of the los
+                    for i in np.arange(0, self.los_range, DIST_STEP): #iterate from 0 to range in DIST_STEP steps
+                        if collision_point < self.los_range:
+                            break
+                        point = (self.x + sin(self.orientation) * i, self.y + cos(self.orientation) * i)
+                        if env.default_region.collidepoint(point[0], point[1]):    
+                            collision_point = i
+                
+                for c in env.collidables:
+                    if collision_point < self.los_range:
+                        break
+                    if c != self and los.colliderect(c.rect): #Collision detected
+                        try:
+                            collisions.append(c)
+                            color = c.color 
+                            DIST_STEP = 1 
+                            #Now we test a discrete set of distances from the origin (bot) to the end of the los
+                            for i in np.arange(0, self.los_range, DIST_STEP): #iterate from 0 to range in DIST_STEP steps
+                                point = (self.x + sin(self.orientation) * i, self.y + cos(self.orientation) * i)
+                                if c.rect.collidepoint(point[0], point[1]):    
+                                    collision_point = i
+                        except:
+                            pass
+                colors.append(color)
+                distances.append(collision_point)
+        return distances, colors 
+
+
 class TankDriveBot(RangefinderBot):
     def move(self, env, l_wheel, r_wheel):
         stationary_flag = False
@@ -343,7 +423,7 @@ class TankDriveBot(RangefinderBot):
             rotate_flag = True
         return (collision_flag, stationary_flag, rotate_flag, invalid_reverse_flag)
 
-class LinearBot(RangefinderBot):
+class LinearRangefinderBot(RangefinderBot):
     def move(self, v, h, delta_orientation):
         global BOT_MOMENTUM, MAX_SPEED
         self.orientation += delta_orientation * self.rotate_rate
@@ -356,6 +436,21 @@ class LinearBot(RangefinderBot):
             speed[1] *= factor
         self.vector = np.array((BOT_MOMENTUM * speed[0], BOT_MOMENTUM * speed[1]))
         return speed
+
+class LinearPrickleBot(PrickleBot):
+    def move(self, v, h, delta_orientation):
+        global BOT_MOMENTUM, MAX_SPEED
+        self.orientation += delta_orientation * self.rotate_rate
+        self.orientation %= (2 * pi) 
+        speed = [self.vector[0] + h * self.speed, self.vector[1] + v * self.speed]#v * self.speed)
+        magnitude = sqrt(abs(speed[0]) + abs(speed[1]))
+        if magnitude > MAX_SPEED:
+            factor = MAX_SPEED / float(magnitude)
+            speed[0] *= factor
+            speed[1] *= factor
+        self.vector = np.array((BOT_MOMENTUM * speed[0], BOT_MOMENTUM * speed[1]))
+        return speed
+
 
 
 class Environment:
@@ -373,7 +468,7 @@ class Environment:
         pygame.init()
         self.screenBGColor = black
         self.screen=pygame.display.set_mode(self.shape)
-        pygame.display.set_caption("CRAP")
+        pygame.display.set_caption("MAZE RUNNER")
         self.clock=pygame.time.Clock()
         self.step = 0
         self.running = True
@@ -444,10 +539,35 @@ class Environment:
         if self.feedback_func is not None:
             self.feedback = self.feedback_func(self, self.default_region)
             print "STEP %s Feedback : %s" % (self.step, self.feedback)
+            _id = 0
             for bot in self.bots:
-                bot.controller._feedback(True, self.feedback) #if shared controller this SHOULDN'T BREAK ANYTHING
+                bot.controller._feedback(True, self.feedback, _id) #if shared controller this SHOULDN'T BREAK ANYTHING
+                _id += 1
         self.iteration += 1
 
+        collidables = []
+        collidables.append(Collidable(5, 5, self.shape[0], 3, blue))
+        collidables.append(Collidable(5, 5, 3, self.shape[1], blue))
+        collidables.append(Collidable(self.shape[0] - 5, 5, 3, self.shape[1], blue))
+        collidables.append(Collidable(5, self.shape[1] - 5, self.shape[0], 3, blue))
+        ##initialize inner walls, if necessary
+        collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 100, 50, 7, 0, 90)
+        collidables.extend(collidable_initializer) 
+        collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 100, 50, 100)
+        collidables.extend(collidable_initializer) 
+        #
+        collidables.extend(self.bots)
+
+        #initialize moveables!
+        moveables = []
+        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)]                 
+        #moveables.extend([Moveable(1.5, self.shape[0] / 2 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)])
+        #moveables = [Moveable(1.5, 
+        #    self.shape[0]/2 + random.random() * 100, self.shape[1]/2 + random.choice((-1, 1)) * random.random() * 200 , 
+        #    15, 15, green) for i in range(5)]
+        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(4)]                 
+        collidables.extend(moveables)
+        self.collidables = collidables 
 
         ## Reset objects here!
         positions = None
@@ -461,31 +581,9 @@ class Environment:
             self.bots[i].orientation = pi 
 
         players = []
-        #players.append(LinearBot(100, 100, 3, 0.2, 0, None))
+        #players.append(LinearRangefinderBot(100, 100, 3, 0.2, 0, None))
         #players.append(LinearBot(115, 115, 3, 0.2, 0, None))
 
-        collidables = []
-        collidables.append(Collidable(5, 5, self.shape[0], 3, blue))
-        collidables.append(Collidable(5, 5, 3, self.shape[1], blue))
-        collidables.append(Collidable(self.shape[0] - 5, 5, 3, self.shape[1], blue))
-        collidables.append(Collidable(5, self.shape[1] - 5, self.shape[0], 3, blue))
-        ##initialize inner walls, if necessary
-        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 100, 50, 7, 0, 90)
-        #collidables.extend(collidable_initializer) 
-        #collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 100, 50, 100)
-        #collidables.extend(collidable_initializer) 
-        #
-        collidables.extend(self.bots)
-
-        #initialize moveables!
-        moveables = []
-        moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)]                 
-        moveables.extend([Moveable(1.5, self.shape[0] / 2 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)])
-        #moveables = [Moveable(1.5, 
-        #    self.shape[0]/2 + random.random() * 100, self.shape[1]/2 + random.choice((-1, 1)) * random.random() * 200 , 
-        #    15, 15, green) for i in range(5)]
-        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(4)]                 
-        collidables.extend(moveables)
 
         if len(players): 
             collidables.extend(players)
@@ -499,8 +597,10 @@ class Environment:
             if self.feedback_func is not None:
                 self.feedback = self.feedback_func(self, self.default_region)
                 print "STEP %s Feedback : %s" % (self.step, self.feedback)
+                _id = 0
                 for bot in self.bots:
-                    bot.controller._feedback(False, self.feedback) #if shared controller this SHOULDN'T BREAK ANYTHING
+                    bot.controller._feedback(False, self.feedback, _id) #if shared controller this SHOULDN'T BREAK ANYTHING
+                    _id += 1
         self.step += 1
 
         collision = {}
@@ -510,9 +610,11 @@ class Environment:
                 sensors = self.sensor_func(self, bot)
                 sensors.append(1.0)
                 instructions = bot.controller(sensors, ind)
+                if instructions is not None:
+                    print "INSTRUCTIONS: , ", [i for i in instructions]
                 #dist, color = bot.rangefinder(self) #gets distance and color from rangefinder, now
                 #instructions = bot.controller([dist, color[0], color[1], color[2], 1.0]) #TODO: Add sensory inputs here
-                collision = self.movement_func(self, bot, instructions, collision)
+                    collision = self.movement_func(self, bot, instructions, collision)
             ind += 1
         if self.player:
             for player in self.player:
@@ -627,11 +729,13 @@ def generate_positions_within_region_with_obstacles(environment, shape, num_bots
             if c.rect.colliderect(pygame.Rect(x, y, 16, 16)):
                 collide = True
         #
-        if collide:
-            continue
-        elif region.collidepoint(x, y):
-            x_pos.append(x)
-            y_pos.append(y)
+        dist = None
+        if len(x_pos) > 0:
+            dist = max([sqrt((x-i)**2 + (y - j)**2) for i, j in zip(x_pos, y_pos)])
+        if region.collidepoint(x, y) and not collide: #hardcode distance min
+            if dist == None or dist > 30:
+                x_pos.append(x)
+                y_pos.append(y)
 
     if len(x_pos) < num_bots:
         print "SHIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIi", zip(x_pos, y_pos)
@@ -732,7 +836,22 @@ def rangefinder_orientation_sensor(env, bot, *args):
     dist = rangefinder_sensor(env, bot, *args)
     dist.append(bot.orientation)
     return dist
-    
+
+def prickle_sensor(env, bot, *args):
+    dist, color = bot.rangefinder(env)
+    sense = []
+    for i in range(len(dist)):
+        sense.append(dist[i])
+        sense.extend(color[i])
+    #print "SENSE: ", sense
+    return sense
+
+   
+def convolutional_sensor(env, bot, *args):
+    rect = pygame.Rect(25, 25, 100, 50)
+    screenshot = pygame.Surface(100, 50)
+    screenshot.blit(screen, area=rect)
+    pygame.image.save(screenshot, "screenshot.jpg")
 
 if __name__ == '__main__':
     #SCREENSIZE = [1360, 700]
@@ -746,27 +865,39 @@ if __name__ == '__main__':
     INVALID_REVERSE_PENALTY = 2 #penalize moving in reverse without object within "threshold" of rangefinder
     INVALID_REVERSE_THRESHOLD = 15 #allowable distance at which to "allow" reverse
 
-    DURATION = 6000 
-    SPEED = 2000
+    DURATION = 600 
+    SPEED = 1000
 
     MINIMUM_BOT_DISTANCE = 200 #used for initializing the bots with random-but-spaced points
 
     bots = []
-    NUM_BOTS = 7
+    NUM_BOTS = 2
     #controller = DumbController()
     controller = MultiNEATController(NEAT_WRAPPER, NUM_BOTS)
 
     for i in range(NUM_BOTS): #for now we just space them horizontally 
 
-        #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
-        bots.append(LinearBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
-                        #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
+        bots.append(LinearPrickleBot(7, 100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
     env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_total_bot_distance_from_region,# 
-            movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
-            default_clock_threshold = 500, default_region = pygame.Rect(0, 0, 220, 220))
+            movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = prickle_sensor,
+            default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
+    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,# 
+    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = prickle_sensor,
+    #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
+    #controller = MultiNEATController(NEAT_WRAPPER, NUM_BOTS)
+
+    #for i in range(NUM_BOTS): #for now we just space them horizontally 
+
+    #    #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
+    #    bots.append(LinearRangefinderBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
+    #                    #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
+    #    #bots.append(LinearPrickleBot(4, 100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
+    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_total_bot_distance_from_region,# 
+    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
+    #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
     #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,# 
     #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_orientation_sensor,
-    #        default_clock_threshold = 300, default_region = pygame.Rect(0, 0, 220, 220))
+    #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
     env.play() 
 
 

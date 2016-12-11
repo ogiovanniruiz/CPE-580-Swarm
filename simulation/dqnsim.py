@@ -7,7 +7,7 @@ from math import sin, cos, pi, floor, sqrt, floor
 from abc import abstractmethod
 
 
-from sim import Controller, Environment, DumbController, LinearBot, Collidable, Moveable 
+from sim import Controller, Environment, DumbController, LinearRangefinderBot, Collidable, Moveable , LinearPrickleBot
 
 red = [255,0,0]
 green = [0,255,0]
@@ -22,12 +22,13 @@ from keras.layers import Dense, Reshape, Merge, Activation, Flatten
 from keras.optimizers import SGD
 model = keras.models.Sequential()
 
-model.add(Dense(15, input_dim = 7, init = 'uniform', activation = 'tanh'))
+model.add(Dense(15, input_dim = 32, init = 'uniform', activation = 'tanh'))
+model.add(Dense(20, init = 'uniform', activation = 'sigmoid'))
 #model.add(keras.layers.recurrent.SimpleRNN(3))    
 #model.add(Activation('tanh'))
 model.add(Dense(1, init = 'uniform', activation = 'linear'))
 
-sgd = SGD(lr = 0.01, decay = 1e-6, momentum = 0.9)
+sgd = SGD(lr = 0.01, decay = 0.00001, momentum = 0.9)
 model.compile(optimizer=sgd, loss='mse')
 print model.summary()
 print model.inputs
@@ -48,7 +49,7 @@ class KerasDQNController(Controller):
     def __call__(self, senses, bot_id):
         if self.policy == 'eps' or self.policy == 'anneal':
             if random.random() >= self.eps: #SELECT GREEDY ACTION (greed) 
-                #print "SENSES: ", senses
+                print "SENSES: ", len(senses)
                 action = self._get_minimizing_action(senses)
                 #print "ACTION: ", action
                 return action
@@ -73,7 +74,7 @@ class KerasDQNController(Controller):
                 for k in self.action_list[2]:
                     tmp = state[:]
                     tmp.extend([i, j, k])
-                    tmp = np.array(tmp).reshape(1, 7)
+                    tmp = np.array(tmp).reshape(1, 29 + 3)
                     #print "TEMP INPUT: ", tmp
                     #print "SHAPE: ", tmp.shape
                     val = self.model.predict([tmp,])
@@ -86,7 +87,7 @@ class KerasDQNController(Controller):
     def _get_q_value(self, state, action):
         tmp = state[:]
         tmp.extend(action)
-        tmp = np.array(tmp).reshape(1, 7)
+        tmp = np.array(tmp).reshape(1, 29 + 3)
         return self.model.predict([tmp,])
 
 
@@ -105,10 +106,11 @@ class KerasDQNERController(KerasDQNController):
 
         self.state_queue = []
         self.action_queue = []
+        self.feedback_queue = {}
 
     def __call__(self, senses, bot_id):
         self.steps += 1
-        senses = senses[:4] #disregard biasing input(?) <3
+        #senses = senses[:len(senses) - 1] #disregard biasing input(?) <3
         self.state_queue.append(senses)
         action = KerasDQNController.__call__(self, senses, bot_id) 
         #action = np.array([random.choice((-1, 1)) for i in range(3)]) #UNTIL Q-Function retrieval works
@@ -117,24 +119,36 @@ class KerasDQNERController(KerasDQNController):
 
 
     def _feedback(self, terminal = False, *args):
-        if args[0] <= 0:  #minimal value is 0 for these tasks
-            pass
-        elif self.steps > 1: #for now, we disregard the 1st state transition entirely
-            try:
-                if terminal: #add another memory     
-                    exp = (self.state_queue.pop(0), self.action_queue.pop(0), args[0], None, terminal) 
-                    self.memory.append(exp)
-                    self._train() #CALL TRAIN HERE, THIS SHOULD CLEAR THE MEMORY FROM THE PREVIOUS EPOCH <3
-                else:
-                    exp = (self.state_queue.pop(0), self.action_queue.pop(0), args[0], self.state_queue[0], terminal) 
-                    if len(self.memory) <= self.memory_limit: 
+        print "FOR BOT: ", args[1]
+        try: 
+            self.feedback_queue[args[1]]
+            if args[0] <= 0:  #minimal value is 0 for these tasks
+                pass
+            elif self.steps > 1: #for now, we disregard the 1st state transition entirely
+                try:
+                    _id = args[1] 
+                    feedback = args[0] - self.feedback_queue[args[1]]
+                    print "Q-Feedback: ", feedback
+                    print "fb: %s queue: %s" % (feedback, self.feedback_queue)
+                    #print "FEEDBACK: %s - %s = %s" % (args[0], self.prev_feedback, feedback)
+                    if terminal: #add another memory     
+                        exp = (self.state_queue.pop(0), self.action_queue.pop(0), feedback, None, terminal) 
                         self.memory.append(exp)
-                    elif random.random() < self.overwrite_prob: #randomly assign
-                        ind = random.choice(range(len(self.memory) - 1))
-                        self.memory.pop(ind)
-                        self.memory.insert(ind, exp)
-            except IndexError:
-                print "INDEXERROR"
+                        self._train() #CALL TRAIN HERE, THIS SHOULD CLEAR THE MEMORY FROM THE PREVIOUS EPOCH <3
+                    else:
+                        exp = (self.state_queue.pop(0), self.action_queue.pop(0), feedback, self.state_queue[0], terminal) 
+                        if len(self.memory) <= self.memory_limit: 
+                            self.memory.append(exp)
+                        elif random.random() < self.overwrite_prob: #randomly assign
+                            ind = random.choice(range(len(self.memory) - 1))
+                            self.memory.pop(ind)
+                            self.memory.insert(ind, exp)
+                except IndexError:
+                    print "INDEXERROR"
+            self.feedback_queue[args[1]] = args[0]
+        except KeyError: 
+            self.feedback_queue[args[1]] = args[0]
+        
 
     def _train(self):
         print "TRAINING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -155,7 +169,7 @@ class KerasDQNERController(KerasDQNController):
                 y = exp[2] + self.gamma * self._get_q_value(exp[3], self._get_minimizing_action(exp[3])) # y = r_t + maximum Q(max_a, s_t+1) 
             inp = exp[0][:]
             inp.extend(exp[1])
-            inp = np.array(inp).reshape(1, 7)
+            inp = np.array(inp).reshape(1, 29 + 3)
             #print "INPUT: ", inp
             try: self.model.fit(np.array(inp), np.array(y), nb_epoch = 1)
             except: pass
@@ -323,6 +337,14 @@ def rangefinder_sensor(env, bot, *args):
     dist = [dist,]
     dist.extend(color)
     return dist
+
+def prickle_sensor(env, bot, *args):
+    dist, color = bot.rangefinder(env)
+    sense = []
+    for i in range(len(dist)):
+        sense.append(dist[i])
+        sense.extend(color[i])
+    return sense
     
 
 if __name__ == '__main__':
@@ -337,28 +359,40 @@ if __name__ == '__main__':
     INVALID_REVERSE_THRESHOLD = 15 #allowable distance at which to "allow" reverse
 
     DURATION = 1000 
-    SPEED = 2000
+    SPEED = 1000
 
     MINIMUM_BOT_DISTANCE = 300 #used for initializing the bots with random-but-spaced points
 
     bots = []
-    NUM_BOTS = 1
+    NUM_BOTS = 2
     controller = DumbController()
     #controller = MultiNEATController(NEAT_WRAPPER, NUM_BOTS)
-    controller = KerasDQNERController(int(DURATION / 2), float('inf'), 0.2, [[-1, 1] for i in range(3)], model, policy = 'anneal', eps = 1.0, 
-            eps_decay = 0.005)
-    for i in range(NUM_BOTS): #for now we just space them horizontally 
+    controller = KerasDQNERController(int(DURATION / 4), float('inf'), 0.2, [[-1, 1] for i in range(3)], model, policy = 'anneal', eps = .7, 
+            eps_decay = 0.0001)
+    #for i in range(NUM_BOTS): #for now we just space them horizontally 
 
-        #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
-        bots.append(LinearBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
-                        #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
-    
-    env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,#feedback_by_total_bot_distance_from_region,# 
-            movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
-            default_clock_threshold = 500, default_region = pygame.Rect(0, 0, 220, 220))
+    #    #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
+    #    bots.append(LinearRangefinderBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
+    #                    #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
+    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,#feedback_by_total_bot_distance_from_region,# 
+    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
+    #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
     #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_total_bot_distance_from_region,# 
     #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = rangefinder_sensor,
     #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
+    #env.play() 
+    for i in range(NUM_BOTS): #for now we just space them horizontally 
+
+        #bots.append(TankDriveBot(100 * i + 50, 50 * i + 50, 3, 0.2, 0, controllers[i]))
+        bots.append(LinearPrickleBot(7, 100 * i + 50, 50 * i + 50, 3, 0.2, 0, controller))
+                        #TODO: Fix hitboxes on ALL objects to their visuals correspond to their actual hitboxes (instead of ... not)
+    
+    #env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_moveable_distance_to_region,#feedback_by_total_bot_distance_from_region,# 
+    #        movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = prickle_sensor,
+    #        default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
+    env = Environment(SCREENSIZE, SPEED, controller, bots, feedback_func = feedback_by_total_bot_distance_from_region,# 
+            movement_func = move_bots, reset_func = reset_after_clock_threshold, sensor_func = prickle_sensor,
+            default_clock_threshold = DURATION, default_region = pygame.Rect(0, 0, 220, 220))
     env.play() 
 
 
