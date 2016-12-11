@@ -94,145 +94,147 @@ class DumbController(Controller):
 
 
 ## IF YOU DON'T HAVE MULTINEAT JUST COMMENT THIS OUT, DON'T REMOVE IT
-import MultiNEAT as NEAT
-class MultiNEATWrapper:
-    """The NEATWrapper contains the means of initializing a NEAT
-    network with a set of specific parameters, and the means of getting
-    a Network at every timestep which represents the most fit (and
-    currently tested) NEAT genome, and the means of updating the fitness
-    of the NEAT genomes as they go."""
-    def __init__(self, params, genome, population = None, 
-                    *args, **kwargs):
-        self.params = params
-        if population is None:
-            population = Population(genome, params, True, 2.0, 1)    
-        self.population = population
-        self.current = 0
-        self.genomes = None
-
-
-    def get_best_genome(self):
-        return self.population.GetBestGenome()
-
-    def get_current_genome(self, progress = True):
-        if self.genomes is None:
+try:
+    import MultiNEAT as NEAT
+    class MultiNEATWrapper:
+        """The NEATWrapper contains the means of initializing a NEAT
+        network with a set of specific parameters, and the means of getting
+        a Network at every timestep which represents the most fit (and
+        currently tested) NEAT genome, and the means of updating the fitness
+        of the NEAT genomes as they go."""
+        def __init__(self, params, genome, population = None, 
+                        *args, **kwargs):
+            self.params = params
+            if population is None:
+                population = Population(genome, params, True, 2.0, 1)    
+            self.population = population
+            self.current = 0
+            self.genomes = None
+    
+    
+        def get_best_genome(self):
+            return self.population.GetBestGenome()
+    
+        def get_current_genome(self, progress = True):
+            if self.genomes is None:
+                self.genomes = NEAT.GetGenomeList(self.population)
+            if self.current >= len(self.genomes):
+                self.update()
+            genome = self.genomes[self.current]
+            if progress: self.current += 1
+            return genome
+                
+        def set_current_fitness(self, fit):
+            self.get_current_genome().SetFitness(fit)
+    
+        def update(self):
+            print " ------------------------------ CURRENT BEST FITNESS: ", self.population.GetBestGenome().GetFitness()
+            print " ------------------------------ BEST FITNESS EVER: ", self.population.GetBestFitnessEver()
+            self.population.Epoch()
             self.genomes = NEAT.GetGenomeList(self.population)
-        if self.current >= len(self.genomes):
-            self.update()
-        genome = self.genomes[self.current]
-        if progress: self.current += 1
-        return genome
-            
-    def set_current_fitness(self, fit):
-        self.get_current_genome().SetFitness(fit)
-
-    def update(self):
-        print " ------------------------------ CURRENT BEST FITNESS: ", self.population.GetBestGenome().GetFitness()
-        print " ------------------------------ BEST FITNESS EVER: ", self.population.GetBestFitnessEver()
-        self.population.Epoch()
-        self.genomes = NEAT.GetGenomeList(self.population)
-        self.current = 0
-
-    def copy(self): #returns a NEW OBJECT identical to current one
-        Ellipsis
-
-class MultiNEATController:
-    def __init__(self, wrapper, num_bots):
-        self.wrapper = wrapper
-        self.genome = None 
-        self.networks = {} 
-        for i in range(num_bots):
-            self.networks[i] = NEAT.NeuralNetwork()
-        self.fitness = 0
-        self.steps = 0 #for keeping track of terminal feedback calls
-
-        #NECESSARY TO INITIALIZE GENOMES, I KNOW THIS SHOULDN"T BE INIT STEP
-        self.wrapper.set_current_fitness(self.fitness) #assumes 1-element feedback
-
-        self.genome = self.wrapper.get_current_genome()
-        for net in self.networks.values():
-           self.genome.BuildPhenotype(net) #theoretically build network 
-
-
-    def __call__(self, senses, bot_id):
-        tmp = senses[:]
-        senses = []
-        MAX_OUTPUT = 100000
-        for s in tmp:
-            if s > MAX_OUTPUT: s = MAX_OUTPUT
-            senses.append(s)
-
-        net = self.networks[bot_id]
-        net.Input(senses)
-        net.Activate()
-        output = net.Output()
-        #print "OUTPUT: ", [o for o in output]
-        self.tick()
-        #self.steps += 1
-        return output 
-
-    def tick(self): #if "stpes' need to be reintroduced
-        self.steps += 1
-
-    def _feedback(self, terminal = False, *args): #TODO: Currently only takes a single bot's fitness
-        if terminal == True and self.steps > 0: #only update / change genomes on update = True
-            #self.fitness = -1 * args[0] 
-            self.fitness = args[0]
-            self.steps = 0
+            self.current = 0
+    
+        def copy(self): #returns a NEW OBJECT identical to current one
+            Ellipsis
+    
+    class MultiNEATController:
+        def __init__(self, wrapper, num_bots):
+            self.wrapper = wrapper
+            self.genome = None 
+            self.networks = {} 
+            for i in range(num_bots):
+                self.networks[i] = NEAT.NeuralNetwork()
+            self.fitness = 0
+            self.steps = 0 #for keeping track of terminal feedback calls
+    
+            #NECESSARY TO INITIALIZE GENOMES, I KNOW THIS SHOULDN"T BE INIT STEP
             self.wrapper.set_current_fitness(self.fitness) #assumes 1-element feedback
-
+    
             self.genome = self.wrapper.get_current_genome()
             for net in self.networks.values():
                self.genome.BuildPhenotype(net) #theoretically build network 
-
-
-params = NEAT.Parameters()
-params.PopulationSize = 30
-params.DynamicCompatibility = True
-params.WeightDiffCoeff = 4.0
-params.CompatTreshold = 1.5
-params.YoungAgeTreshold = 12
-params.SpeciesMaxStagnation = 15
-params.OldAgeTreshold = 20
-params.MinSpecies = 1
-params.MaxSpecies = 5
-params.RouletteWheelSelection = False
-params.RecurrentProb = 0.15
-params.OverallMutationRate = 0.3
     
-params.MutateWeightsProb = 0.2
     
-params.WeightMutationMaxPower = 2.5
-params.WeightReplacementMaxPower = 5.0
-params.MutateWeightsSevereProb = 0.4
-params.WeightMutationRate = 0.45
+        def __call__(self, senses, bot_id):
+            tmp = senses[:]
+            senses = []
+            MAX_OUTPUT = 100000
+            for s in tmp:
+                if s > MAX_OUTPUT: s = MAX_OUTPUT
+                senses.append(s)
     
-params.MaxWeight = 9
+            net = self.networks[bot_id]
+            net.Input(senses)
+            net.Activate()
+            output = net.Output()
+            #print "OUTPUT: ", [o for o in output]
+            self.tick()
+            #self.steps += 1
+            return output 
     
-params.MutateAddNeuronProb = 0.1
-params.MutateAddLinkProb = 0.1
-params.MutateRemLinkProb = 0.1
+        def tick(self): #if "stpes' need to be reintroduced
+            self.steps += 1
     
-params.MinActivationA  = 4.9
-params.MaxActivationA  = 4.9
+        def _feedback(self, terminal = False, *args): #TODO: Currently only takes a single bot's fitness
+            if terminal == True and self.steps > 0: #only update / change genomes on update = True
+                #self.fitness = -1 * args[0] 
+                self.fitness = args[0]
+                self.steps = 0
+                self.wrapper.set_current_fitness(self.fitness) #assumes 1-element feedback
     
-params.ActivationFunction_SignedSigmoid_Prob = 0.35
-params.ActivationFunction_UnsignedSigmoid_Prob = 0.15
-params.ActivationFunction_Linear_Prob = 0.1
-params.ActivationFunction_Tanh_Prob = 0.3
-params.ActivationFunction_SignedStep_Prob = 0.2
-
-params.CrossoverRate = 0.15  # mutate only 0.25
-params.MultipointCrossoverRate = 0.25
-params.SurvivalRate = 0.2
-
-
-
-#g = NEAT.Genome(0, 6, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
-g = NEAT.Genome(0, 29, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
-pop = NEAT.Population(g, params, True, 1.0, 0)
-NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
-
+                self.genome = self.wrapper.get_current_genome()
+                for net in self.networks.values():
+                   self.genome.BuildPhenotype(net) #theoretically build network 
+    
+    
+    params = NEAT.Parameters()
+    params.PopulationSize = 30
+    params.DynamicCompatibility = True
+    params.WeightDiffCoeff = 4.0
+    params.CompatTreshold = 1.5
+    params.YoungAgeTreshold = 12
+    params.SpeciesMaxStagnation = 15
+    params.OldAgeTreshold = 20
+    params.MinSpecies = 1
+    params.MaxSpecies = 5
+    params.RouletteWheelSelection = False
+    params.RecurrentProb = 0.15
+    params.OverallMutationRate = 0.3
+        
+    params.MutateWeightsProb = 0.2
+        
+    params.WeightMutationMaxPower = 2.5
+    params.WeightReplacementMaxPower = 5.0
+    params.MutateWeightsSevereProb = 0.4
+    params.WeightMutationRate = 0.45
+        
+    params.MaxWeight = 9
+        
+    params.MutateAddNeuronProb = 0.1
+    params.MutateAddLinkProb = 0.1
+    params.MutateRemLinkProb = 0.1
+        
+    params.MinActivationA  = 4.9
+    params.MaxActivationA  = 4.9
+        
+    params.ActivationFunction_SignedSigmoid_Prob = 0.35
+    params.ActivationFunction_UnsignedSigmoid_Prob = 0.15
+    params.ActivationFunction_Linear_Prob = 0.1
+    params.ActivationFunction_Tanh_Prob = 0.3
+    params.ActivationFunction_SignedStep_Prob = 0.2
+    
+    params.CrossoverRate = 0.15  # mutate only 0.25
+    params.MultipointCrossoverRate = 0.25
+    params.SurvivalRate = 0.2
+    
+except:
+    pass
+    
+    #g = NEAT.Genome(0, 6, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
+    g = NEAT.Genome(0, 29, 0, 3, False, NEAT.ActivationFunction.SIGNED_SIGMOID, NEAT.ActivationFunction.SIGNED_SIGMOID, 0, params)
+    pop = NEAT.Population(g, params, True, 1.0, 0)
+    NEAT_WRAPPER = MultiNEATWrapper(params, g, pop)
+    
 ##
 
 
@@ -873,7 +875,8 @@ if __name__ == '__main__':
     bots = []
     NUM_BOTS = 2
     #controller = DumbController()
-    controller = MultiNEATController(NEAT_WRAPPER, NUM_BOTS)
+    try: controller = MultiNEATController(NEAT_WRAPPER, NUM_BOTS)
+    except: controller = DumbController()
 
     for i in range(NUM_BOTS): #for now we just space them horizontally 
 
