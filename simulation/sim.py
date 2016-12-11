@@ -18,7 +18,8 @@ LEFT = [-1,0]
 RIGHT = [1,0]
 NOTMOVING = [0,0]
 
-
+MAZE = True
+COLLECTION = not MAZE
 
 MOVEABLE_FRICTION = 0.4
 BOT_MOMENTUM = 0.3
@@ -552,25 +553,26 @@ class Environment:
         collidables.append(Collidable(5, 5, 3, self.shape[1], blue))
         collidables.append(Collidable(self.shape[0] - 5, 5, 3, self.shape[1], blue))
         collidables.append(Collidable(5, self.shape[1] - 5, self.shape[0], 3, blue))
-        ##initialize inner walls, if necessary
-        collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 100, 50, 7, 0, 90)
-        collidables.extend(collidable_initializer) 
-        collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 100, 50, 100)
-        collidables.extend(collidable_initializer) 
-        #
+        if MAZE == True: 
+            ##initialize inner walls, if necessary
+            collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 100, 50, 7, 0, 90)
+            collidables.extend(collidable_initializer) 
+            collidable_initializer = initialize_collidable_obstacles(self, self.shape, 20, 7, 0, 100, 50, 100)
+            collidables.extend(collidable_initializer) 
+            #
+        elif COLLECTION == True: 
+            #initialize moveables!
+            moveables = []
+            moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)]                 
+            moveables.extend([Moveable(1.5, self.shape[0] / 2 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)])
+            moveables = [Moveable(1.5, 
+                self.shape[0]/2 + random.random() * 100, self.shape[1]/2 + random.choice((-1, 1)) * random.random() * 200 , 
+                15, 15, green) for i in range(5)]
+            #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(4)]                 
+            collidables.extend(moveables)
+
         collidables.extend(self.bots)
-
-        #initialize moveables!
-        moveables = []
-        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)]                 
-        #moveables.extend([Moveable(1.5, self.shape[0] / 2 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(3)])
-        #moveables = [Moveable(1.5, 
-        #    self.shape[0]/2 + random.random() * 100, self.shape[1]/2 + random.choice((-1, 1)) * random.random() * 200 , 
-        #    15, 15, green) for i in range(5)]
-        #moveables = [Moveable(1.5, self.shape[0] / 2 + 100 + i * 20, self.shape[1] / 2 + i * 50, 15, 15, green) for i in range(4)]                 
-        collidables.extend(moveables)
         self.collidables = collidables 
-
         ## Reset objects here!
         positions = None
         while positions is None:
